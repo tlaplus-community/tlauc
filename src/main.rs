@@ -1,6 +1,6 @@
 extern crate clap;
 use clap::{Arg, App, SubCommand};
-use tree_sitter::{Node, Parser, Point, TreeCursor};
+use tree_sitter::{Node, Parser, Point, Tree, TreeCursor, Query, QueryCursor};
 use std::{fs::File, fs::OpenOptions};
 use std::io::{
     prelude::*,
@@ -9,6 +9,18 @@ use std::io::{
     SeekFrom::Start
 };
 use std::convert::TryInto;
+
+fn has_forall(tree : Tree) -> bool {
+    match Query::new(tree_sitter_tlaplus::language(), "(forall) @match") {
+        Ok(q) => {
+            let qc = QueryCursor::new();
+            qc.matches(&q, tree.root_node(), |_ : &Node| {});
+        },
+        Err(e) => {}
+    };
+
+    return false;
+}
 
 fn symbol_to_unicode(node_name : &str) -> Option<&str> {
     match node_name {
@@ -19,6 +31,9 @@ fn symbol_to_unicode(node_name : &str) -> Option<&str> {
     }
 }
 
+/**
+ * Inefficient; we don't need to walk the entire tree! We can use queries!
+ */
 fn walk_tree(mut cursor : TreeCursor) -> Option<(Node, &str, &str)> {
     loop {
         if let Some(uc) = symbol_to_unicode(cursor.node().kind()) {
