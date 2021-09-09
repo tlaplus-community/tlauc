@@ -1,6 +1,6 @@
 extern crate clap;
 use clap::{Arg, App, SubCommand};
-use tree_sitter::{Node, Parser, Point, Tree, TreeCursor, Query, QueryCursor};
+use tree_sitter::*;
 use std::{fs::File, fs::OpenOptions};
 use std::io::{
     prelude::*,
@@ -10,18 +10,128 @@ use std::io::{
 };
 use std::convert::TryInto;
 
-fn has_forall(tree : Tree) -> bool {
-    match Query::new(tree_sitter_tlaplus::language(), "(forall) @match") {
-        Ok(q) => {
-            let qc = QueryCursor::new();
-            qc.matches(&q, tree.root_node(), |_ : &Node| {});
-        },
-        Err(e) => {}
-    };
+struct SymbolMapping {
+    name : &'static str,
+    unicode : &'static str,
+    ascii : &'static[&'static str]
+}
+impl SymbolMapping {
+    fn canonical_ascii(&self) -> &str {
+        return self.ascii[0];
+    }
 
+    fn ascii_query(&self) -> Query {
+        let query = self.ascii
+            .iter()
+            .map(|a| a.replace("\\", "\\\\"))
+            .map(|a| format!("\"{}\"", a))
+            .reduce(|a, b| a + " " + &b)
+            .unwrap();
+        let query = format!("({} [{}] @match)", self.name, query);
+        return Query::new(tree_sitter_tlaplus::language(), &query).unwrap();
+    }
+
+    fn to_ascii(&self, text : &mut String, node : &Node) -> InputEdit {
+        *text = text[..node.start_byte()].to_string()
+            + self.canonical_ascii()
+            + &text[node.end_byte()..];
+        return InputEdit {
+            start_byte: node.start_byte(),
+            old_end_byte: node.end_byte(),
+            new_end_byte: node.start_byte() + self.canonical_ascii().len(),
+            start_position: node.start_position(),
+            old_end_position: node.end_position(),
+            new_end_position: Point::new(node.start_position().row, node.start_position().column + self.canonical_ascii().len())
+        };
+    }
+    
+    fn unicode_query(&self) -> Query {
+        let query = format!("({} \"{}\" @match)", self.name, self.unicode);
+        return Query::new(tree_sitter_tlaplus::language(), &query).unwrap();
+    }
+    
+    fn to_unicode(&self, text : &mut String, node : &Node) -> InputEdit {
+        *text = text[..node.start_byte()].to_string()
+            + self.unicode
+            + &text[node.end_byte()..];
+        return InputEdit {
+            start_byte: node.start_byte(),
+            old_end_byte: node.end_byte(),
+            new_end_byte: node.start_byte() + self.unicode.len(),
+            start_position: node.start_position(),
+            old_end_position: node.end_position(),
+            new_end_position: Point::new(node.start_position().row, node.start_position().column + self.unicode.len())
+        };
+    }
+}
+
+const SYMBOLS : &'static [SymbolMapping] = &[
+    SymbolMapping {name : "def_eq", unicode : "≜",  ascii : &["=="]},
+    SymbolMapping {name : "set_in", unicode : "∈",  ascii : &["\\in"]},
+    SymbolMapping {name : "gets",   unicode : "⟵",  ascii : &["<-"]},
+    SymbolMapping {name : "forall", unicode : "∀",  ascii : &["\\A", "\\forall"]},
+];
+
+fn rewrite_next_to_unicode(text : &mut String, tree : &Tree, cursor : &mut QueryCursor) -> Option<InputEdit> {
+    for mapping in SYMBOLS {
+        //println!("Mapping [{}] -> [{}]", mapping.ascii[0], mapping.unicode);
+        let query = mapping.ascii_query();
+        for m in cursor.matches(&query, tree.root_node(), |_| "") {
+            for c in m.captures {
+                //println!("{:?}", c);
+                return Some(mapping.to_unicode(text, &c.node));
+            }
+        }
+    }
+    
+    return None;
+}
+
+fn rewrite_next_to_ascii(text : &mut String, tree : &Tree, cursor : &mut QueryCursor) -> Option<InputEdit> {
+    for mapping in SYMBOLS {
+        //println!("Mapping [{}] -> [{}]", mapping.ascii[0], mapping.unicode);
+        let query = mapping.unicode_query();
+        for m in cursor.matches(&query, tree.root_node(), |_| "") {
+            for c in m.captures {
+                //println!("{:?}", c);
+                return Some(mapping.to_ascii(text, &c.node));
+            }
+        }
+    }
+    
+    return None;
+}
+
+
+fn has_forall() -> bool {
+    let mut input =
+r#"---- MODULE Test ----
+op == \A n \in Nat : TRUE
+op2 == ∀ n \in Nat : TRUE
+op3 == \forall n \in Nat : TRUE
+===="#.to_string();
+    println!("{}", input);
+    let mut parser = Parser::new();
+    parser.set_language(tree_sitter_tlaplus::language()).expect("Error loading TLA+ grammar");
+    let mut tree = parser.parse(&input, None).unwrap();
+    let mut cursor = QueryCursor::new();
+    while let Some(edit) = rewrite_next_to_unicode(&mut input, &tree, &mut cursor) {
+        tree.edit(&edit);
+        tree = parser.parse(&input, Some(&tree)).unwrap();
+    }
+
+    println!("{}", input);
+
+    while let Some(edit) = rewrite_next_to_ascii(&mut input, &tree, &mut cursor) {
+        tree.edit(&edit);
+        tree = parser.parse(&input, Some(&tree)).unwrap();
+    }
+
+    println!("{}", input);
     return false;
 }
 
+/*
 fn symbol_to_unicode(node_name : &str) -> Option<&str> {
     match node_name {
         "\\A" => Some("∀"),
@@ -31,9 +141,6 @@ fn symbol_to_unicode(node_name : &str) -> Option<&str> {
     }
 }
 
-/**
- * Inefficient; we don't need to walk the entire tree! We can use queries!
- */
 fn walk_tree(mut cursor : TreeCursor) -> Option<(Node, &str, &str)> {
     loop {
         if let Some(uc) = symbol_to_unicode(cursor.node().kind()) {
@@ -119,7 +226,10 @@ fn to_ascii(spec : &mut File, ignore_errors : bool) {
 
 }
 
+*/
 fn main() {
+    has_forall();
+    /*
     let matches =
         App::new("TLA+ Unicode Converter")
             .version("0.1.0")
@@ -177,5 +287,6 @@ fn main() {
     } else {
         println!("{}", matches.usage());
     }
+    */
 }
 
