@@ -1,7 +1,8 @@
 extern crate clap;
-use clap::{Arg, App, SubCommand};
+//use clap::{Arg, App, SubCommand};
 use tree_sitter::*;
-use std::{fs::File, fs::OpenOptions};
+//use std::{fs::File, fs::OpenOptions};
+/*
 use std::io::{
     prelude::*,
     BufReader,
@@ -9,25 +10,34 @@ use std::io::{
     SeekFrom::Start
 };
 use std::convert::TryInto;
+*/
+use std::io::{Error, ErrorKind};
+use serde::Deserialize;
 
+#[derive(Debug, Deserialize)]
 struct SymbolMapping {
-    name : &'static str,
-    unicode : &'static str,
-    ascii : &'static[&'static str]
+    #[serde(rename = "Name")]
+    name : String,
+    #[serde(rename = "ASCII")]
+    ascii : String,
+    #[serde(rename = "Unicode")]
+    unicode : String
 }
+
 impl SymbolMapping {
     fn canonical_ascii(&self) -> &str {
-        return self.ascii[0];
+        return self.ascii.split(";").next().unwrap();
     }
 
     fn ascii_query(&self) -> Query {
         let query = self.ascii
-            .iter()
+            .split(";")
             .map(|a| a.replace("\\", "\\\\"))
             .map(|a| format!("\"{}\"", a))
             .reduce(|a, b| a + " " + &b)
             .unwrap();
         let query = format!("({} [{}] @match)", self.name, query);
+        println!("{}", query);
         return Query::new(tree_sitter_tlaplus::language(), &query).unwrap();
     }
 
@@ -52,7 +62,7 @@ impl SymbolMapping {
     
     fn to_unicode(&self, text : &mut String, node : &Node) -> InputEdit {
         *text = text[..node.start_byte()].to_string()
-            + self.unicode
+            + self.unicode.as_str()
             + &text[node.end_byte()..];
         return InputEdit {
             start_byte: node.start_byte(),
@@ -65,15 +75,29 @@ impl SymbolMapping {
     }
 }
 
-const SYMBOLS : &'static [SymbolMapping] = &[
-    SymbolMapping {name : "def_eq", unicode : "≜",  ascii : &["=="]},
-    SymbolMapping {name : "set_in", unicode : "∈",  ascii : &["\\in"]},
-    SymbolMapping {name : "gets",   unicode : "⟵",  ascii : &["<-"]},
-    SymbolMapping {name : "forall", unicode : "∀",  ascii : &["\\A", "\\forall"]},
-];
+fn get_unicode_mappings() -> Result<Vec<SymbolMapping>, Error> {
+    let exe_path = std::env::current_exe()?;
+    let exe_dir = exe_path.as_path().parent().ok_or(
+        Error::new(ErrorKind::Other, "Exe does not have parent")
+    )?;
+    let csv_path = exe_dir.join("tla-unicode.csv");
+    let mut reader = csv::Reader::from_path(csv_path)?;
+    let mut records = Vec::new();
+    for result in reader.deserialize() {
+        let record : SymbolMapping = result?;
+        records.push(record);
+    }
+    
+    return Ok(records);
+}
 
-fn rewrite_next_to_unicode(text : &mut String, tree : &Tree, cursor : &mut QueryCursor) -> Option<InputEdit> {
-    for mapping in SYMBOLS {
+fn rewrite_next_to_unicode(
+    mappings : &Vec<SymbolMapping>,
+    text : &mut String,
+    tree : &Tree,
+    cursor : &mut QueryCursor
+) -> Option<InputEdit> {
+    for mapping in mappings {
         //println!("Mapping [{}] -> [{}]", mapping.ascii[0], mapping.unicode);
         let query = mapping.ascii_query();
         for m in cursor.matches(&query, tree.root_node(), |_| "") {
@@ -87,8 +111,13 @@ fn rewrite_next_to_unicode(text : &mut String, tree : &Tree, cursor : &mut Query
     return None;
 }
 
-fn rewrite_next_to_ascii(text : &mut String, tree : &Tree, cursor : &mut QueryCursor) -> Option<InputEdit> {
-    for mapping in SYMBOLS {
+fn rewrite_next_to_ascii(
+    mappings : &Vec<SymbolMapping>,
+    text : &mut String,
+    tree : &Tree,
+    cursor : &mut QueryCursor
+) -> Option<InputEdit> {
+    for mapping in mappings {
         //println!("Mapping [{}] -> [{}]", mapping.ascii[0], mapping.unicode);
         let query = mapping.unicode_query();
         for m in cursor.matches(&query, tree.root_node(), |_| "") {
@@ -103,7 +132,8 @@ fn rewrite_next_to_ascii(text : &mut String, tree : &Tree, cursor : &mut QueryCu
 }
 
 
-fn has_forall() -> bool {
+fn rewrite() {
+    let mappings = get_unicode_mappings().expect("BAD");
     let mut input =
 r#"---- MODULE Test ----
 op == \A n \in Nat : TRUE
@@ -115,20 +145,19 @@ op3 == \forall n \in Nat : TRUE
     parser.set_language(tree_sitter_tlaplus::language()).expect("Error loading TLA+ grammar");
     let mut tree = parser.parse(&input, None).unwrap();
     let mut cursor = QueryCursor::new();
-    while let Some(edit) = rewrite_next_to_unicode(&mut input, &tree, &mut cursor) {
+    while let Some(edit) = rewrite_next_to_unicode(&mappings, &mut input, &tree, &mut cursor) {
         tree.edit(&edit);
         tree = parser.parse(&input, Some(&tree)).unwrap();
     }
 
     println!("{}", input);
 
-    while let Some(edit) = rewrite_next_to_ascii(&mut input, &tree, &mut cursor) {
+    while let Some(edit) = rewrite_next_to_ascii(&mappings, &mut input, &tree, &mut cursor) {
         tree.edit(&edit);
         tree = parser.parse(&input, Some(&tree)).unwrap();
     }
 
     println!("{}", input);
-    return false;
 }
 
 /*
@@ -228,7 +257,7 @@ fn to_ascii(spec : &mut File, ignore_errors : bool) {
 
 */
 fn main() {
-    has_forall();
+    rewrite();
     /*
     let matches =
         App::new("TLA+ Unicode Converter")
