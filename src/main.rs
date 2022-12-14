@@ -1,6 +1,15 @@
 extern crate clap;
 //use clap::{Arg, App, SubCommand};
-use tree_sitter::*;
+use tree_sitter::{
+    InputEdit,
+    Node, 
+    Parser,
+    Point,
+    Query,
+    QueryCursor,
+    TextProvider,
+    Tree,
+};
 //use std::{fs::File, fs::OpenOptions};
 /*
 use std::io::{
@@ -37,7 +46,6 @@ impl SymbolMapping {
             .reduce(|a, b| a + " " + &b)
             .unwrap();
         let query = format!("({} [{}] @match)", self.name, query);
-        println!("{}", query);
         return Query::new(tree_sitter_tlaplus::language(), &query).unwrap();
     }
 
@@ -100,9 +108,9 @@ fn rewrite_next_to_unicode(
     for mapping in mappings {
         //println!("Mapping [{}] -> [{}]", mapping.ascii[0], mapping.unicode);
         let query = mapping.ascii_query();
-        for m in cursor.matches(&query, tree.root_node(), |_| "") {
+        for m in cursor.matches(&query, tree.root_node(), "".as_bytes()) {
             for c in m.captures {
-                //println!("{:?}", c);
+                println!("{:?}", c);
                 return Some(mapping.to_unicode(text, &c.node));
             }
         }
@@ -120,9 +128,9 @@ fn rewrite_next_to_ascii(
     for mapping in mappings {
         //println!("Mapping [{}] -> [{}]", mapping.ascii[0], mapping.unicode);
         let query = mapping.unicode_query();
-        for m in cursor.matches(&query, tree.root_node(), |_| "") {
+        for m in cursor.matches(&query, tree.root_node(), "".as_bytes()) {
             for c in m.captures {
-                //println!("{:?}", c);
+                println!("{:?}", c);
                 return Some(mapping.to_ascii(text, &c.node));
             }
         }
@@ -133,7 +141,7 @@ fn rewrite_next_to_ascii(
 
 
 fn rewrite() {
-    let mappings = get_unicode_mappings().expect("BAD");
+    let mappings = get_unicode_mappings().expect("Error loading unicode mappings");
     let mut input =
 r#"---- MODULE Test ----
 op == \A n \in Nat : TRUE
