@@ -7,7 +7,6 @@ use tree_sitter::{
     Point,
     Query,
     QueryCursor,
-    TextProvider,
     Tree,
 };
 //use std::{fs::File, fs::OpenOptions};
