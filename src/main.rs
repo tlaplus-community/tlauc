@@ -64,6 +64,20 @@ fn get_unicode_mappings() -> Result<Vec<SymbolMapping>, Error> {
         let record : SymbolMapping = result?;
         records.push(record);
     }
+
+    /*
+    records.push(SymbolMapping {
+        name: "bullet_conj".to_string(),
+        ascii: "/\\".to_string(),
+        unicode: "∧".to_string()
+    });
+
+    records.push(SymbolMapping {
+        name: "bullet_disj".to_string(),
+        ascii: "\\/".to_string(),
+        unicode: "∨".to_string()
+    });
+    */
     
     Ok(records)
 }
@@ -72,6 +86,14 @@ fn get_unicode_mappings() -> Result<Vec<SymbolMapping>, Error> {
 struct JList {
     column: usize,
     bulleted_lines: Vec<usize>
+}
+
+impl JList {
+    /*
+    fn jlist_query() -> Query {
+        let query_str = "((conj_list))"
+    }
+    */
 }
 
 #[derive(Debug)]
@@ -98,8 +120,10 @@ fn rewrite() {
     let input =
 r#"---- MODULE Test ----
 op == \A n \in Nat : TRUE
-op2 == ∀ n \in Nat : TRUE
-op3 == \forall n \in Nat : TRUE
+op2 == /\ A
+       /\ \/ B /\ C
+          \/ D
+       /\ E
 ===="#.to_string();
     println!("{}", input);
     let mut parser = Parser::new();
@@ -118,16 +142,25 @@ fn rewrite_generic(
     get_query_str: fn(&SymbolMapping) -> String,
     get_target: fn(&SymbolMapping) -> String
 ) -> String {
-    let mappings = get_unicode_mappings().expect("Error loading unicode mappings");
+    // Search for all conjunction & disjunction lists to mark
+    let mut cursor = QueryCursor::new();
+    let query = Query::new(
+        tree_sitter_tlaplus::language(),
+        "(conj_item (bullet_conj) @bullet_conj) (disj_item (bullet_disj) @bullet_disj)").unwrap();
+    for capture in cursor.matches(&query, tree.root_node(), "".as_bytes()) {
+        println!("{:?}", capture);
+    }
 
+    // Search for all symbols to replace
+    let mappings = get_unicode_mappings().expect("Error loading unicode mappings");
     let queries = &mappings
         .iter()
         .map(|s| get_query_str(s))
         .fold("".to_string(), |a, e| a + &e);
     //println!("{}", queries);
     let query = Query::new(tree_sitter_tlaplus::language(), &queries).unwrap();
-    let mut cursor = QueryCursor::new();
 
+    // Replace all symbols
     let mut tla_lines : Vec<TlaLine> = input.lines().map(|line| TlaLine::new(line)).collect();
     for capture in cursor.matches(&query, tree.root_node(), "".as_bytes()) {
         let capture = capture.captures[0];
@@ -153,36 +186,6 @@ fn rewrite_generic(
     let result: Vec<&str> = tla_lines.iter().map(|l| l.text.as_ref()).collect();
     result.join("\n")
 }
-
-/*
-fn rewrite_simple() {
-    let mappings = get_unicode_mappings().expect("Error loading unicode mappings");
-    let mut input =
-r#"---- MODULE Test ----
-op == \A n \in Nat : TRUE
-op2 == ∀ n \in Nat : TRUE
-op3 == \forall n \in Nat : TRUE
-===="#.to_string();
-    println!("{}", input);
-    let mut parser = Parser::new();
-    parser.set_language(tree_sitter_tlaplus::language()).expect("Error loading TLA+ grammar");
-    let mut tree = parser.parse(&input, None).unwrap();
-    let mut cursor = QueryCursor::new();
-    while let Some(edit) = rewrite_next_to_unicode(&mappings, &mut input, &tree, &mut cursor) {
-        tree.edit(&edit);
-        tree = parser.parse(&input, Some(&tree)).unwrap();
-    }
-
-    println!("{}", input);
-
-    while let Some(edit) = rewrite_next_to_ascii(&mappings, &mut input, &tree, &mut cursor) {
-        tree.edit(&edit);
-        tree = parser.parse(&input, Some(&tree)).unwrap();
-    }
-
-    println!("{}", input);
-}
-    */
 
 /*
 fn symbol_to_unicode(node_name : &str) -> Option<&str> {

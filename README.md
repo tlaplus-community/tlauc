@@ -57,8 +57,8 @@ Sort the symbol locations by line and then push them onto the symbol vector, wit
 If the symbol vector was empty, nothing needs to be done on this line.
 Otherwise, replace the popped symbol.
 If no jlists are to the right of this symbol, no further action is required; otherwise:
-  1. For a given replaced symbol, it suffices to only consider the next-right jlist; iterate through the line's jlist vector to find it.
-  1. For each subsequent line spanned by the next-right jlist, add or remove a space at the very beginning of the line to fix the alignment.
+   1. For a given replaced symbol, it suffices to only consider the next-right jlist; iterate through the line's jlist vector to find it.
+   1. For each subsequent line spanned by the next-right jlist, add or remove a space at the very beginning of the line to fix the alignment.
 Update the positions of entities in the jlist and symbol stacks appropriately.
 
 1. Once all symbol vectors are empty on all lines, the replacement process is complete; the symbols are all replaced, but the parse tree is unchanged.

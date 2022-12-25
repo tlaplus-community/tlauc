@@ -81,3 +81,5 @@ sup_plus,^+,⁺,U+207A
 nat_number_set,Nat,ℕ,U+2115
 int_number_set,Int,ℤ,U+2124
 real_number_set,Real,ℝ,U+211D
+bullet_conj,/\,∧,U+2227
+bullet_disj,\/,∨,U+2228

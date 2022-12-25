@@ -8,4 +8,4 @@ clap = "4.0.29"
 csv = "1.1.6"
 serde = { version = "1.0.149", features = ["derive"] }
 tree-sitter = "0.20.9"
-tree-sitter-tlaplus = "0.6.1"
+tree-sitter-tlaplus = "0.6.2"
