@@ -5,6 +5,7 @@ use tree_sitter::{
     Query,
     QueryCursor,
     Tree,
+    TreeCursor,
 };
 //use std::{fs::File, fs::OpenOptions};
 /*
@@ -19,6 +20,11 @@ use std::convert::TryInto;
 use std::io::{Error, ErrorKind};
 use serde::Deserialize;
 
+enum Mode {
+    ASCIItoUnicode,
+    UnicodeToASCII
+}
+
 #[derive(Debug, Deserialize)]
 struct SymbolMapping {
     #[serde(rename = "Name")]
@@ -30,25 +36,31 @@ struct SymbolMapping {
 }
 
 impl SymbolMapping {
-    fn canonical_ascii(&self) -> String {
-        self.ascii.split(";").next().unwrap().to_string()
+    fn target_symbol(&self, mode: &Mode) -> String {
+        match mode {
+            Mode::ASCIItoUnicode => self.unicode.to_string(),
+            Mode::UnicodeToASCII => self.ascii.split(";").next().unwrap().to_string()
+        }
     }
 
-    fn ascii_query_str(&self) -> String {
-        let query = self.ascii
-            .split(";")
-            .map(|a| a.replace("\\", "\\\\"))
-            .map(|a| format!("\"{}\"", a))
-            .reduce(|a, b| a + " " + &b)
-            .unwrap();
-        let name = &self.name;
-        format!("({name} [{query}] @{name})")
-    }
-
-    fn unicode_query_str(&self) -> String {
-        let name = &self.name;
-        let unicode = &self.unicode;
-        format!("({name} \"{unicode}\" @{name})")
+    fn source_query(&self, mode: &Mode) -> String {
+        match mode {
+            Mode::ASCIItoUnicode => {
+                let query = self.ascii
+                    .split(";")
+                    .map(|a| a.replace("\\", "\\\\"))
+                    .map(|a| format!("\"{}\"", a))
+                    .reduce(|a, b| a + " " + &b)
+                    .unwrap();
+                let name = &self.name;
+                format!("({name} [{query}] @{name})")
+            },
+            Mode::UnicodeToASCII => {
+                let name = &self.name;
+                let unicode = &self.unicode;
+                format!("({name} \"{unicode}\" @{name})")
+            }
+        }
     }
 }
 
@@ -64,20 +76,6 @@ fn get_unicode_mappings() -> Result<Vec<SymbolMapping>, Error> {
         let record : SymbolMapping = result?;
         records.push(record);
     }
-
-    /*
-    records.push(SymbolMapping {
-        name: "bullet_conj".to_string(),
-        ascii: "/\\".to_string(),
-        unicode: "∧".to_string()
-    });
-
-    records.push(SymbolMapping {
-        name: "bullet_disj".to_string(),
-        ascii: "\\/".to_string(),
-        unicode: "∨".to_string()
-    });
-    */
     
     Ok(records)
 }
@@ -89,11 +87,11 @@ struct JList {
 }
 
 impl JList {
-    /*
-    fn jlist_query() -> Query {
-        let query_str = "((conj_list))"
+    fn query() -> Query {
+        Query::new(
+            tree_sitter_tlaplus::language(),
+            "(conj_list) @conj_list (disj_list) @disj_list").unwrap()
     }
-    */
 }
 
 #[derive(Debug)]
@@ -116,6 +114,83 @@ impl TlaLine {
     }
 }
 
+fn mark_jlists(
+    tree: &Tree,
+    query_cursor: &mut QueryCursor,
+    tla_lines: &mut Vec<TlaLine>
+) {
+    let mut tree_cursor: TreeCursor = tree.walk();
+    for capture in query_cursor.matches(&JList::query(), tree.root_node(), "".as_bytes()) {
+        let node = capture.captures[0].node;
+        let start_line = node.start_position().row;
+        tree_cursor.reset(node);
+        let mut jlist = JList { column: node.start_position().column, bulleted_lines: Vec::new() };
+        tree_cursor.goto_first_child();
+        while {
+            if "conj_item" == tree_cursor.node().kind() || "disj_item" == tree_cursor.node().kind() {
+                jlist.bulleted_lines.push(tree_cursor.node().start_position().row - start_line);
+            }
+
+            tree_cursor.goto_next_sibling()
+        } {}
+
+        tla_lines[start_line].jlists.push(jlist);
+    }
+}
+
+fn mark_symbols(
+    tree: &Tree,
+    cursor: &mut QueryCursor,
+    tla_lines: &mut Vec<TlaLine>,
+    mode: &Mode
+) {
+    let mappings = get_unicode_mappings().expect("Error loading unicode mappings");
+    let queries = &mappings
+        .iter()
+        .map(|s| s.source_query(mode))
+        .collect::<Vec<String>>()
+        .join("");
+    let query = Query::new(tree_sitter_tlaplus::language(), &queries).unwrap();
+
+    for capture in cursor.matches(&query, tree.root_node(), "".as_bytes()) {
+        let capture = capture.captures[0];
+        let mapping = &mappings[capture.index as usize];
+        let start_position = capture.node.start_position();
+        let end_position = capture.node.end_position();
+        assert!(start_position.row == end_position.row);
+        let line = &mut tla_lines[start_position.row];
+        line.symbols.push(Symbol {
+            start: start_position.column,
+            end: end_position.column,
+            target: mapping.target_symbol(mode)
+        });
+    }
+}
+
+fn replace_symbols(tla_lines: &mut Vec<TlaLine>) {
+    for line in tla_lines {
+        for symbol in line.symbols.iter().rev() {
+            line.text.replace_range(symbol.start..symbol.end, &symbol.target);
+        }
+    }
+}
+
+fn rewrite_generic(
+    input: &str,
+    tree: &Tree,
+    mode: Mode
+) -> String {
+    let mut cursor = QueryCursor::new();
+    let mut tla_lines : Vec<TlaLine> = input.lines().map(|line| TlaLine::new(line)).collect();
+
+    mark_jlists(tree, &mut cursor, &mut tla_lines);
+    mark_symbols(tree, &mut cursor, &mut tla_lines, &mode);
+    println!("{:#?}", tla_lines);
+    replace_symbols(&mut tla_lines);
+
+    tla_lines.iter().map(|l| l.text.as_ref()).collect::<Vec<&str>>().join("\n")
+}
+
 fn rewrite() {
     let input =
 r#"---- MODULE Test ----
@@ -129,74 +204,14 @@ op2 == /\ A
     let mut parser = Parser::new();
     parser.set_language(tree_sitter_tlaplus::language()).expect("Error loading TLA+ grammar");
     let tree = parser.parse(&input, None).unwrap();
-    let result = rewrite_generic(&input, &tree, |s| s.ascii_query_str(), |s| s.unicode.to_owned());
+    let result = rewrite_generic(&input, &tree, Mode::ASCIItoUnicode);
     println!("{}", &result);
     let tree = parser.parse(&result, None).unwrap();
-    let result = rewrite_generic(&result, &tree, |s| s.unicode_query_str(), |s| s.canonical_ascii().to_owned());
+    let result = rewrite_generic(&result, &tree, Mode::UnicodeToASCII);
     println!("{}", &result);
-}
-
-fn rewrite_generic(
-    input: &str,
-    tree: &Tree,
-    get_query_str: fn(&SymbolMapping) -> String,
-    get_target: fn(&SymbolMapping) -> String
-) -> String {
-    // Search for all conjunction & disjunction lists to mark
-    let mut cursor = QueryCursor::new();
-    let query = Query::new(
-        tree_sitter_tlaplus::language(),
-        "(conj_item (bullet_conj) @bullet_conj) (disj_item (bullet_disj) @bullet_disj)").unwrap();
-    for capture in cursor.matches(&query, tree.root_node(), "".as_bytes()) {
-        println!("{:?}", capture);
-    }
-
-    // Search for all symbols to replace
-    let mappings = get_unicode_mappings().expect("Error loading unicode mappings");
-    let queries = &mappings
-        .iter()
-        .map(|s| get_query_str(s))
-        .fold("".to_string(), |a, e| a + &e);
-    //println!("{}", queries);
-    let query = Query::new(tree_sitter_tlaplus::language(), &queries).unwrap();
-
-    // Replace all symbols
-    let mut tla_lines : Vec<TlaLine> = input.lines().map(|line| TlaLine::new(line)).collect();
-    for capture in cursor.matches(&query, tree.root_node(), "".as_bytes()) {
-        let capture = capture.captures[0];
-        let mapping = &mappings[capture.index as usize];
-        let start_position = capture.node.start_position();
-        let end_position = capture.node.end_position();
-        assert!(start_position.row == end_position.row);
-        let line = &mut tla_lines[start_position.row];
-        line.symbols.push(Symbol {
-            start: start_position.column,
-            end: end_position.column,
-            target: get_target(mapping)
-        });
-    }
-
-    //println!("{:#?}", tla_lines);
-    for line in &mut tla_lines {
-        for symbol in line.symbols.iter().rev() {
-            line.text.replace_range(symbol.start..symbol.end, &symbol.target);
-        }
-    }
-
-    let result: Vec<&str> = tla_lines.iter().map(|l| l.text.as_ref()).collect();
-    result.join("\n")
 }
 
 /*
-fn symbol_to_unicode(node_name : &str) -> Option<&str> {
-    match node_name {
-        "\\A" => Some("∀"),
-        "\\in" => Some("∈"),
-        "==" => Some("≜"),
-        _ => None
-    }
-}
-
 fn walk_tree(mut cursor : TreeCursor) -> Option<(Node, &str, &str)> {
     loop {
         if let Some(uc) = symbol_to_unicode(cursor.node().kind()) {
