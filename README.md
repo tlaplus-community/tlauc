@@ -52,14 +52,11 @@ The top-level algorithm is as follows:
 1. For each line in the file, create two vectors: a jlist vector, and a symbol vector.
 1. Use tree-sitter queries to identify the locations & scope of all conjunction and disjunction lists (henceforth referred to as "jlists"). For each line, push details of any jlists starting on that line onto the jlist vector, sorted from left to right.
 1. Use tree-sitter queries to identify the locations of all symbols to be replaced.
-Sort the symbol locations by line and then push them onto the symbol vector, with the rightmost symbol on top.
-1. For each line, pop the symbol vector to get the rightmost remaining symbol.
-If the symbol vector was empty, nothing needs to be done on this line.
-Otherwise, replace the popped symbol.
-If no jlists are to the right of this symbol, no further action is required; otherwise:
+Sort the symbol locations by line and then push them onto the symbol vector, sorted from left to right.
+1. For each line, iterate through the symbol vector in reverse and replace each in turn.
+If no jlists are to the right of a given symbol on the line, no further action is required; otherwise:
    1. For a given replaced symbol, it suffices to only consider the next-right jlist; iterate through the line's jlist vector to find it.
-   1. For each subsequent line spanned by the next-right jlist, add or remove a space at the very beginning of the line to fix the alignment.
+   1. For each subsequent line spanned by the next-right jlist, add or remove space at the very beginning of the line to fix the alignment.
 Update the positions of entities in the jlist and symbol stacks appropriately.
 
-1. Once all symbol vectors are empty on all lines, the replacement process is complete; the symbols are all replaced, but the parse tree is unchanged.
-
+1. After iterating through all lines, the process is complete; the symbols are replaced, but the parse tree is unchanged.

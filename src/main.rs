@@ -62,6 +62,13 @@ impl SymbolMapping {
             }
         }
     }
+
+    fn chars_added(&self, mode: &Mode) -> i8 {
+        match mode {
+            Mode::ASCIItoUnicode => (self.unicode.chars().count() as i8) - (self.ascii.chars().count() as i8),
+            Mode::UnicodeToASCII => (self.ascii.chars().count() as i8) - (self.unicode.chars().count() as i8),
+        }
+    }
 }
 
 fn get_unicode_mappings() -> Result<Vec<SymbolMapping>, Error> {
@@ -83,7 +90,7 @@ fn get_unicode_mappings() -> Result<Vec<SymbolMapping>, Error> {
 #[derive(Debug)]
 struct JList {
     column: usize,
-    bulleted_lines: Vec<usize>
+    bullet_line_offsets: Vec<usize>
 }
 
 impl JList {
@@ -92,12 +99,17 @@ impl JList {
             tree_sitter_tlaplus::language(),
             "(conj_list) @conj_list (disj_list) @disj_list").unwrap()
     }
+
+    fn is_jlist_item_node(cursor: &TreeCursor) -> bool {
+        "conj_item" == cursor.node().kind() || "disj_item" == cursor.node().kind()
+    }
 }
 
 #[derive(Debug)]
 struct Symbol {
-    start: usize,
-    end: usize,
+    src_start: usize,
+    src_end: usize,
+    char_add: i8,
     target: String
 }
 
@@ -124,11 +136,11 @@ fn mark_jlists(
         let node = capture.captures[0].node;
         let start_line = node.start_position().row;
         tree_cursor.reset(node);
-        let mut jlist = JList { column: node.start_position().column, bulleted_lines: Vec::new() };
+        let mut jlist = JList { column: node.start_position().column, bullet_line_offsets: Vec::new() };
         tree_cursor.goto_first_child();
         while {
-            if "conj_item" == tree_cursor.node().kind() || "disj_item" == tree_cursor.node().kind() {
-                jlist.bulleted_lines.push(tree_cursor.node().start_position().row - start_line);
+            if JList::is_jlist_item_node(&tree_cursor) {
+                jlist.bullet_line_offsets.push(tree_cursor.node().start_position().row - start_line);
             }
 
             tree_cursor.goto_next_sibling()
@@ -160,22 +172,56 @@ fn mark_symbols(
         assert!(start_position.row == end_position.row);
         let line = &mut tla_lines[start_position.row];
         line.symbols.push(Symbol {
-            start: start_position.column,
-            end: end_position.column,
+            src_start: start_position.column,
+            src_end: end_position.column,
+            char_add: mapping.chars_added(mode),
             target: mapping.target_symbol(mode)
         });
     }
 }
 
-fn replace_symbols(tla_lines: &mut Vec<TlaLine>) {
-    for line in tla_lines {
+fn replace_symbols(tla_lines: &mut [TlaLine]) {
+    for line_number in 0..tla_lines.len()-1 {
+        let (current_lines, next_lines) = tla_lines.split_at_mut(line_number + 1);
+        let line = current_lines.get_mut(line_number).unwrap();
         for symbol in line.symbols.iter().rev() {
-            line.text.replace_range(symbol.start..symbol.end, &symbol.target);
+            let symbol_end_char_index = line.text[..symbol.src_end].chars().count();
+            line.text.replace_range(symbol.src_start..symbol.src_end, &symbol.target);
+            if 0 != symbol.char_add {
+                for jlist in &line.jlists {
+                    if jlist.column > symbol.src_start {
+                        for &offset in &jlist.bullet_line_offsets {
+                            if offset > 0 {
+                                let bullet_line = next_lines.get_mut(offset - 1).unwrap();
+                                let char_add = symbol.char_add;
+                                if char_add < 0 {
+                                    let spaces_to_remove = -char_add as usize;
+                                    let replace_range = (symbol_end_char_index - spaces_to_remove)..symbol_end_char_index;
+                                    bullet_line.text.drain(replace_range);
+                                } else {
+                                    let spaces_to_add = " ".repeat(char_add as usize);
+                                    bullet_line.text.insert_str(symbol_end_char_index, &spaces_to_add);
+                                }
+
+                                for jlist in &mut bullet_line.jlists {
+                                    jlist.column = (jlist.column as i32 + char_add as i32) as usize;
+                                }
+
+                                for symbol in &mut bullet_line.symbols {
+                                    symbol.src_start = (symbol.src_start as i32 + char_add as i32) as usize;
+                                    symbol.src_end = (symbol.src_end as i32 + char_add as i32) as usize;
+
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
 
-fn rewrite_generic(
+fn rewrite(
     input: &str,
     tree: &Tree,
     mode: Mode
@@ -185,58 +231,12 @@ fn rewrite_generic(
 
     mark_jlists(tree, &mut cursor, &mut tla_lines);
     mark_symbols(tree, &mut cursor, &mut tla_lines, &mode);
-    println!("{:#?}", tla_lines);
     replace_symbols(&mut tla_lines);
 
     tla_lines.iter().map(|l| l.text.as_ref()).collect::<Vec<&str>>().join("\n")
 }
 
-fn rewrite() {
-    let input =
-r#"---- MODULE Test ----
-op == \A n \in Nat : TRUE
-op2 == /\ A
-       /\ \/ B /\ C
-          \/ D
-       /\ E
-===="#.to_string();
-    println!("{}", input);
-    let mut parser = Parser::new();
-    parser.set_language(tree_sitter_tlaplus::language()).expect("Error loading TLA+ grammar");
-    let tree = parser.parse(&input, None).unwrap();
-    let result = rewrite_generic(&input, &tree, Mode::ASCIItoUnicode);
-    println!("{}", &result);
-    let tree = parser.parse(&result, None).unwrap();
-    let result = rewrite_generic(&result, &tree, Mode::UnicodeToASCII);
-    println!("{}", &result);
-}
-
 /*
-fn walk_tree(mut cursor : TreeCursor) -> Option<(Node, &str, &str)> {
-    loop {
-        if let Some(uc) = symbol_to_unicode(cursor.node().kind()) {
-            return Some((cursor.node(), cursor.node().kind(), uc));
-        }
-
-        // Try to go to first child.
-        // If no such child exists, try to go to next sibling.
-        // If no such sibling exists, try to go to next sibling of parent.
-        // If no such node exists, walk up tree until finding a sibling of a parent.
-        // If no parent exists, we have walked the entire tree.
-        if !cursor.goto_first_child() {
-            loop {
-                if cursor.goto_next_sibling() {
-                    break;
-                } else {
-                    if !cursor.goto_parent() {
-                        return None;
-                    }
-                }
-            }
-        }
-    }
-}
-
 fn to_unicode(
     spec : &str,
     ignore_errors : bool
@@ -293,13 +293,27 @@ fn to_unicode(
     }
 }
 
-fn to_ascii(spec : &mut File, ignore_errors : bool) {
+*/
 
+fn main() {
+    let input =
+r#"---- MODULE Test ----
+op2 == /\ A
+       /\ \/ B
+          \/ C
+       /\ D
+===="#.to_string();
+    println!("{}", input);
+    let mut parser = Parser::new();
+    parser.set_language(tree_sitter_tlaplus::language()).expect("Error loading TLA+ grammar");
+    let tree = parser.parse(&input, None).unwrap();
+    let result = rewrite(&input, &tree, Mode::ASCIItoUnicode);
+    println!("{}", &result);
+    let tree = parser.parse(&result, None).unwrap();
+    let result = rewrite(&result, &tree, Mode::UnicodeToASCII);
+    println!("{}", &result);
 }
 
-*/
-fn main() {
-    rewrite();
     /*
     let matches =
         App::new("TLA+ Unicode Converter")
@@ -358,6 +372,6 @@ fn main() {
     } else {
         println!("{}", matches.usage());
     }
-    */
 }
+    */
 
