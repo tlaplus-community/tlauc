@@ -1,10 +1,15 @@
 use std::marker::Copy;
 use std::ops::{Add, Neg, Range, RangeTo, Sub};
 
-#[derive(Clone,Copy,Debug,PartialEq,PartialOrd)]
-pub struct CharQuantity<T>(pub T) where T: Copy;
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
+pub struct CharQuantity<T>(pub T)
+where
+    T: Copy;
 
-impl<T> CharQuantity<T> where T: Copy {
+impl<T> CharQuantity<T>
+where
+    T: Copy,
+{
     pub fn value(self) -> T {
         self.0
     }
@@ -26,10 +31,15 @@ impl Sub<CharQuantity<usize>> for CharQuantity<usize> {
     }
 }
 
-#[derive(Clone,Copy,Debug,PartialEq,PartialOrd)]
-pub struct ByteQuantity<T>(pub T) where T: Copy;
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
+pub struct ByteQuantity<T>(pub T)
+where
+    T: Copy;
 
-impl<T> ByteQuantity<T> where T: Copy {
+impl<T> ByteQuantity<T>
+where
+    T: Copy,
+{
     pub fn as_range(range: &Range<ByteQuantity<T>>) -> Range<T> {
         range.start.0..range.end.0
     }
@@ -48,7 +58,9 @@ impl ByteQuantity<usize> {
 }
 
 impl<T> From<CharQuantity<T>> for ByteQuantity<T>
-    where T: Copy {
+where
+    T: Copy,
+{
     fn from(other: CharQuantity<T>) -> ByteQuantity<T> {
         ByteQuantity(other.0)
     }

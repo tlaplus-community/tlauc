@@ -328,6 +328,7 @@ fn fix_alignment(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::iter::zip;
 
     fn check_ascii_replaced(text: &str) {
         let mut parser = Parser::new();
@@ -368,12 +369,7 @@ mod tests {
         }
     }
 
-    #[test]
-    fn basic_roundtrip() {
-        let expected = r#"---- MODULE Test ----
-op == \A n \in Nat: n >= 0
-===="#
-            .to_string();
+    fn run_roundtrip_test(expected: String) {
         let intermediate = unwrap_conversion(rewrite(&expected, Mode::AsciiToUnicode, false));
         check_ascii_replaced(&intermediate);
         let actual = unwrap_conversion(rewrite(&intermediate, Mode::UnicodeToAscii, false));
@@ -381,7 +377,16 @@ op == \A n \in Nat: n >= 0
     }
 
     #[test]
-    fn all_symbols_roundtrip() {
+    fn basic_roundtrip() {
+        let expected = r#"---- MODULE Test ----
+op == \A n \in Nat: n >= 0
+===="#
+            .to_string();
+        run_roundtrip_test(expected);
+    }
+
+    #[test]
+    fn all_canonical_symbols_roundtrip() {
         let expected = r#"---- MODULE Test ----
 op == \A n \in Nat : \E r \in Real : ~(n = r)
 op == {x \in R : TRUE}
@@ -405,10 +410,43 @@ op == A \div B \o C \star D !! E ?? F \sqcap G
 op == A \sqcup B \uplus C \X D \wr E \cdot F ^+
 ===="#
             .to_string();
+        run_roundtrip_test(expected);
+    }
+
+    #[test]
+    fn all_non_canonical_symbols_roundtrip() {
+        let expected = r#"---- MODULE Test ----
+op == \forall n \in Nat : TRUE
+op == \exists r \in Real : TRUE
+op == \neg P
+op == P \land Q
+op == P \lor Q
+op == x # y
+op == x =< y
+op == x \leq y
+op == x \geq y
+op == P \cap Q
+op == P \cup Q
+op == x \oplus y
+op == x \ominus y
+op == x \odot y
+op == x \oslash y
+op == x \otimes y
+op == x \circ y
+op == P \times Q
+===="#
+            .to_string();
         let intermediate = unwrap_conversion(rewrite(&expected, Mode::AsciiToUnicode, false));
         check_ascii_replaced(&intermediate);
         let actual = unwrap_conversion(rewrite(&intermediate, Mode::UnicodeToAscii, false));
-        assert_eq!(expected, actual);
+        // Only first and last lines should be the same
+        for (i, (expected_line, actual_line)) in zip(expected.lines(), actual.lines()).enumerate() {
+            if i == 0 || i == expected.lines().count() - 1 {
+                assert_eq!(expected_line, actual_line);
+            } else {
+                assert_ne!(expected_line, actual_line);
+            }
+        }
     }
 
     #[test]
@@ -420,10 +458,7 @@ op == /\ A
       /\ D
 ===="#
             .to_string();
-        let intermediate = unwrap_conversion(rewrite(&expected, Mode::AsciiToUnicode, false));
-        check_ascii_replaced(&intermediate);
-        let actual = unwrap_conversion(rewrite(&intermediate, Mode::UnicodeToAscii, false));
-        assert_eq!(expected, actual);
+        run_roundtrip_test(expected);
     }
 
     #[test]
@@ -435,10 +470,7 @@ op == /\ A
       /\ D
 ===="#
             .to_string();
-        let intermediate = unwrap_conversion(rewrite(&expected, Mode::AsciiToUnicode, false));
-        check_ascii_replaced(&intermediate);
-        let actual = unwrap_conversion(rewrite(&intermediate, Mode::UnicodeToAscii, false));
-        assert_eq!(expected, actual);
+        run_roundtrip_test(expected);
     }
 
     #[test]
@@ -478,9 +510,20 @@ op == /\ \/ /\ \/ /\ A
                   /\ F
 ===="#
             .to_string();
-        let intermediate = unwrap_conversion(rewrite(&expected, Mode::AsciiToUnicode, false));
-        check_ascii_replaced(&intermediate);
-        let actual = unwrap_conversion(rewrite(&intermediate, Mode::UnicodeToAscii, false));
-        assert_eq!(expected, actual);
+        run_roundtrip_test(expected);
+    }
+
+    #[test]
+    fn jlist_with_comments() {
+        let expected = r#"---- MODULE Test ----
+op == /\ A
+      /\ \/ B 
+\* This is a comment
+         \/ C
+(* This is another comment *)
+      /\ D
+===="#
+            .to_string();
+        run_roundtrip_test(expected);
     }
 }
