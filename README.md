@@ -44,7 +44,7 @@ fn main() {
 ## Details
 
 TLA+ often has several ASCII symbols all representing the same operator (for example, `<=`, `=<`, and `\leq`); these will all map to the same Unicode symbol (`≤`), and when mapping back to ASCII the first ASCII symbol in the semicolon-separated CSV cell will be used (`<=`).
-Users may use this tool to convert their old ASCII TLA+ files to use more easily-readable Unicode symbols, or to convert their Unicode TLA+ files to ASCII for tools which cannot yet handle Unicode.
+Users may use this tool to convert their old ASCII TLA+ files to more-easily-read Unicode symbols, or convert their Unicode TLA+ files to ASCII for tools which cannot yet handle Unicode.
 
 The reason this program isn't just a simple search & replace is that blank space and column alignment matters for some TLA+ constructs, specifically conjunction and disjunction lists (henceforth called jlists):
 
@@ -67,7 +67,7 @@ def ≜ ∧ A
 
 We see that both the jlists lost their alignment.
 This is unlikely to change the logical value of the expression, but is still undesirable.
-Thus we need to analyze the parse tree to find all jlists, and ensure our modifications do not change the alignments of their items.
+Thus we need to analyze the parse tree to find all jlists, and ensure our modifications maintain the alignments of their items.
 For this purpose we use [tree-sitter-tlaplus](https://github.com/tlaplus-community/tree-sitter-tlaplus), which correctly parses these constructs.
 The tree-sitter parse tree for the above (correctly aligned) code snippet is:
 
@@ -86,7 +86,7 @@ The tree-sitter parse tree for the above (correctly aligned) code snippet is:
   )
 )
 ```
-Note that for an optimal TLA+ unicode experience, you will want to use a monospace font that renders all the relevant unicode math symbols in fixed width.
+Note that for an optimal TLA+ unicode experience, you need a monospace font that renders all the relevant unicode math symbols in fixed width.
 Without this feature, displayed jlist alignment may differ from actual jlist alignment.
 
 For safety, the program checks to ensure the converted TLA+ file has the exact same parse tree as the original.
@@ -95,17 +95,17 @@ Both of these checks can be bypassed with the `--force` command line parameter (
 
 ## Algorithm
 
-The top-level algorithm is as follows:
+The high-level algorithm is as follows:
 
 1. For each line in the input file, create two vectors: a jlist vector, and a symbol vector.
 1. Parse the input file and use tree-sitter queries to identify the locations & scope of all jlists.
 For each line, push details of any jlists starting on that line onto the jlist vector, sorted from left to right.
 1. Use tree-sitter queries to identify the locations of all symbols to be replaced.
-Sort the symbol locations by line and then push them onto the symbol vector, sorted from left to right.
-1. For each line, iteratively pop the top element off the symbol vector and replace each in turn.
-If no jlists start to the right of a given symbol on the line, no further action is required; otherwise:
+Sort the symbol locations by line and then push them onto the line's symbol vector, sorted from left to right.
+1. For each line, iteratively pop the top element off the symbol vector and replace it in the text.
+If no jlists start to the right of that symbol the line, no further action is required; otherwise:
    1. For each jlist starting to the right of the replaced symbol on that line, iterate through all subsequent bullet lines and add or remove space at the beginning of the line to fix the alignment.
-   Update the positions of entities in the jlist and symbol stacks appropriately.
+   Update the positions of entities in the jlist and symbol stacks on those lines.
    1. For each jlist bullet alignment fixed, check whether any additional jlists start on that line; recursively fix their alignment with the same process until no jlists remain to be fixed.
 
 1. After iterating through all lines, the process is complete; parse the converted tree and compare it to the original.

@@ -1,4 +1,4 @@
-use tlauc::{SymbolMapping, get_unicode_mappings};
+use tlauc::{get_unicode_mappings, SymbolMapping};
 //use clap::{Arg, App, SubCommand};
 //use std::{fs::File, fs::OpenOptions};
 /*
