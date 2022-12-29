@@ -1,5 +1,5 @@
 [package]
-name = "tlaplus-unicode-converter"
+name = "tlaunicode"
 version = "0.1.0"
 edition = "2018"
 
