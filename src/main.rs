@@ -1,4 +1,4 @@
-use tlauc::{rewrite, Mode};
+use tlauc::{SymbolMapping, get_unicode_mappings};
 //use clap::{Arg, App, SubCommand};
 //use std::{fs::File, fs::OpenOptions};
 /*
@@ -12,46 +12,8 @@ use std::convert::TryInto;
 */
 
 fn main() {
-    let input = r#"---- MODULE Test ----
-op == /\ \/ /\ \/ /\ A
-                  /\ B
-               \/ /\ C
-                  /\ D
-            /\ \/ /\ E
-                  /\ F
-               \/ /\ G
-                  /\ H
-         \/ /\ \/ /\ A
-                  /\ B
-               \/ /\ C
-                  /\ D
-            /\ \/ /\ E
-                  /\ F
-               \/ /\ G
-                  /\ H
-      /\ \/ /\ \/ /\ I
-                  /\ J
-               \/ /\ K
-                  /\ L
-            /\ \/ /\ M
-                  /\ N
-               \/ /\ O
-                  /\ P
-         \/ /\ \/ /\ Q
-                  /\ R
-               \/ /\ S
-                  /\ T
-            /\ \/ /\ U
-                  /\ V
-               \/ /\ W
-                  /\ X
-===="#
-        .to_string();
-    println!("{}", input);
-    let intermediate = rewrite(&input, Mode::AsciiToUnicode, false).unwrap();
-    println!("{}", intermediate);
-    let output = rewrite(&intermediate, Mode::UnicodeToAscii, false).unwrap();
-    println!("{}", output);
+    let mappings: Vec<SymbolMapping> = get_unicode_mappings().unwrap();
+    println!("{:#?}", mappings);
 }
 
 /*
