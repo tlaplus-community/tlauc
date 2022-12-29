@@ -1,4 +1,4 @@
-//use tlauc::{Mode, rewrite};
+use tlauc::{rewrite, Mode};
 //use clap::{Arg, App, SubCommand};
 //use std::{fs::File, fs::OpenOptions};
 /*
@@ -12,6 +12,46 @@ use std::convert::TryInto;
 */
 
 fn main() {
+    let input = r#"---- MODULE Test ----
+op == /\ \/ /\ \/ /\ A
+                  /\ B
+               \/ /\ C
+                  /\ D
+            /\ \/ /\ E
+                  /\ F
+               \/ /\ G
+                  /\ H
+         \/ /\ \/ /\ A
+                  /\ B
+               \/ /\ C
+                  /\ D
+            /\ \/ /\ E
+                  /\ F
+               \/ /\ G
+                  /\ H
+      /\ \/ /\ \/ /\ I
+                  /\ J
+               \/ /\ K
+                  /\ L
+            /\ \/ /\ M
+                  /\ N
+               \/ /\ O
+                  /\ P
+         \/ /\ \/ /\ Q
+                  /\ R
+               \/ /\ S
+                  /\ T
+            /\ \/ /\ U
+                  /\ V
+               \/ /\ W
+                  /\ X
+===="#
+        .to_string();
+    println!("{}", input);
+    let intermediate = rewrite(&input, Mode::AsciiToUnicode, false).unwrap();
+    println!("{}", intermediate);
+    let output = rewrite(&intermediate, Mode::UnicodeToAscii, false).unwrap();
+    println!("{}", output);
 }
 
 /*
@@ -73,7 +113,7 @@ fn to_unicode(
 
 */
 
-    /*
+/*
     let matches =
         App::new("TLA+ Unicode Converter")
             .version("0.1.0")
