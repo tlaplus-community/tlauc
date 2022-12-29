@@ -1,4 +1,3 @@
-use tlauc::{get_unicode_mappings, SymbolMapping};
 //use clap::{Arg, App, SubCommand};
 //use std::{fs::File, fs::OpenOptions};
 /*
@@ -11,9 +10,13 @@ use std::io::{
 use std::convert::TryInto;
 */
 
+use tlauc::{rewrite, Mode};
+
 fn main() {
-    let mappings: Vec<SymbolMapping> = get_unicode_mappings().unwrap();
-    println!("{:#?}", mappings);
+    let input = r#"---- MODULE Test ----
+op == \A r1 \in Real : \E r2 \in Real : r2 < r1
+===="#;
+    println!("{}", rewrite(input, Mode::AsciiToUnicode, false).unwrap());
 }
 
 /*

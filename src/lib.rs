@@ -1,8 +1,7 @@
 mod strquantity;
 use crate::strquantity::{ByteQuantity, CharQuantity};
 
-use serde::Deserialize;
-use std::io::Error;
+use serde::{Deserialize, Deserializer};
 use std::ops::Range;
 use tree_sitter::{Parser, Query, QueryCursor, Tree, TreeCursor};
 
@@ -14,6 +13,7 @@ pub enum Mode {
 #[derive(Debug)]
 pub enum TlaError {
     InputFileParseError(Tree),
+    OutputFileParseError(Tree),
     InvalidTranslationError {
         input_tree: Tree,
         output_tree: Tree,
@@ -47,51 +47,58 @@ pub fn rewrite(input: &str, mode: Mode, force: bool) -> Result<String, TlaError>
         .collect::<Vec<&str>>()
         .join("\n");
     let output_tree = parser.parse(&output, None).unwrap();
-    if !force
-        && (output_tree.root_node().has_error()
-            || input_tree.root_node().to_sexp() != output_tree.root_node().to_sexp())
-    {
-        return Err(TlaError::InvalidTranslationError {
-            input_tree,
-            output_tree,
-            output,
-        });
+    if !force {
+        if output_tree.root_node().has_error() {
+            return Err(TlaError::OutputFileParseError(output_tree));
+        }
+        if input_tree.root_node().to_sexp() != output_tree.root_node().to_sexp() {
+            return Err(TlaError::InvalidTranslationError {
+                input_tree,
+                output_tree,
+                output,
+            });
+        }
     }
 
     Ok(output)
 }
 
-pub fn get_unicode_mappings() -> Result<Vec<SymbolMapping>, Error> {
+pub fn get_unicode_mappings() -> Vec<SymbolMapping> {
     let csv = include_str!("../resources/tla-unicode.csv");
     let mut reader = csv::Reader::from_reader(csv.as_bytes());
-    let mut records = Vec::new();
-    for result in reader.deserialize() {
-        let record: SymbolMapping = result?;
-        records.push(record);
-    }
-
-    Ok(records)
+    reader.deserialize().map(|result| result.unwrap()).collect()
 }
 
 #[derive(Debug, Deserialize)]
 pub struct SymbolMapping {
     #[serde(rename = "Name")]
     name: String,
-    #[serde(rename = "ASCII")]
-    ascii: String,
+    #[serde(
+        rename = "ASCII",
+        deserialize_with = "vec_from_semicolon_separated_str"
+    )]
+    ascii: Vec<String>,
     #[serde(rename = "Unicode")]
     unicode: String,
 }
 
+fn vec_from_semicolon_separated_str<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s: &str = Deserialize::deserialize(deserializer)?;
+    Ok(s.split(";").map(|s| s.to_string()).collect())
+}
+
 impl SymbolMapping {
     pub fn canonical_ascii(&self) -> &str {
-        self.ascii.split(";").next().unwrap()
+        self.ascii.first().unwrap()
     }
 
     pub fn ascii_query(&self) -> String {
         let query = self
             .ascii
-            .split(";")
+            .iter()
             .map(|a| a.replace("\\", "\\\\"))
             .map(|a| format!("\"{}\"", a))
             .reduce(|a, b| a + " " + &b)
@@ -223,7 +230,7 @@ impl JList {
 }
 
 fn mark_symbols(tree: &Tree, cursor: &mut QueryCursor, tla_lines: &mut [TlaLine], mode: &Mode) {
-    let mappings = get_unicode_mappings().expect("Error loading unicode mappings");
+    let mappings = get_unicode_mappings();
     let queries = &mappings
         .iter()
         .map(|s| s.source_query(mode))
@@ -338,8 +345,7 @@ mod tests {
         let tree = parser.parse(&text, None).unwrap();
         assert!(!tree.root_node().has_error());
         let mut cursor = QueryCursor::new();
-        let mappings = get_unicode_mappings().unwrap();
-        let queries = &mappings
+        let queries = get_unicode_mappings()
             .iter()
             .map(|s| s.ascii_query())
             .collect::<Vec<String>>()
@@ -359,6 +365,9 @@ mod tests {
             Err(TlaError::InputFileParseError(tree)) => {
                 panic!("{}", tree.root_node().to_sexp())
             }
+            Err(TlaError::OutputFileParseError(tree)) => {
+                panic!("{}", tree.root_node().to_sexp())
+            }
             Err(TlaError::InvalidTranslationError {
                 input_tree: _,
                 output_tree: _,
@@ -369,8 +378,8 @@ mod tests {
         }
     }
 
-    fn run_roundtrip_test(expected: String) {
-        let intermediate = unwrap_conversion(rewrite(&expected, Mode::AsciiToUnicode, false));
+    fn run_roundtrip_test(expected: &str) {
+        let intermediate = unwrap_conversion(rewrite(expected, Mode::AsciiToUnicode, false));
         check_ascii_replaced(&intermediate);
         let actual = unwrap_conversion(rewrite(&intermediate, Mode::UnicodeToAscii, false));
         assert_eq!(expected, actual);
@@ -378,16 +387,17 @@ mod tests {
 
     #[test]
     fn basic_roundtrip() {
-        let expected = r#"---- MODULE Test ----
+        run_roundtrip_test(
+            r#"---- MODULE Test ----
 op == \A n \in Nat: n >= 0
-===="#
-            .to_string();
-        run_roundtrip_test(expected);
+===="#,
+        );
     }
 
     #[test]
     fn all_canonical_symbols_roundtrip() {
-        let expected = r#"---- MODULE Test ----
+        run_roundtrip_test(
+            r#"---- MODULE Test ----
 op == \A n \in Nat : \E r \in Real : ~(n = r)
 op == {x \in R : TRUE}
 op == INSTANCE Module WITH x <- y
@@ -408,9 +418,8 @@ op == A \intersect B \union C .. D ... E (+) F (-) G
 op == A || B (.) C (/) D (\X) E \bigcirc F \bullet G
 op == A \div B \o C \star D !! E ?? F \sqcap G
 op == A \sqcup B \uplus C \X D \wr E \cdot F ^+
-===="#
-            .to_string();
-        run_roundtrip_test(expected);
+===="#,
+        );
     }
 
     #[test]
@@ -434,9 +443,8 @@ op == x \oslash y
 op == x \otimes y
 op == x \circ y
 op == P \times Q
-===="#
-            .to_string();
-        let intermediate = unwrap_conversion(rewrite(&expected, Mode::AsciiToUnicode, false));
+===="#;
+        let intermediate = unwrap_conversion(rewrite(expected, Mode::AsciiToUnicode, false));
         check_ascii_replaced(&intermediate);
         let actual = unwrap_conversion(rewrite(&intermediate, Mode::UnicodeToAscii, false));
         // Only first and last lines should be the same
@@ -451,31 +459,32 @@ op == P \times Q
 
     #[test]
     fn test_basic_jlist() {
-        let expected = r#"---- MODULE Test ----
+        run_roundtrip_test(
+            r#"---- MODULE Test ----
 op == /\ A
       /\ B
       /\ C
       /\ D
-===="#
-            .to_string();
-        run_roundtrip_test(expected);
+===="#,
+        );
     }
 
     #[test]
     fn test_nested_jlist() {
-        let expected = r#"---- MODULE Test ----
+        run_roundtrip_test(
+            r#"---- MODULE Test ----
 op == /\ A
       /\ \/ B 
          \/ C
       /\ D
-===="#
-            .to_string();
-        run_roundtrip_test(expected);
+===="#,
+        );
     }
 
     #[test]
     fn test_full_binary_tree_jlist() {
-        let expected = r#"---- MODULE Test ----
+        run_roundtrip_test(
+            r#"---- MODULE Test ----
 op == /\ \/ /\ \/ /\ A
                   /\ B
                \/ /\ C
@@ -508,22 +517,21 @@ op == /\ \/ /\ \/ /\ A
                   /\ D
                \/ /\ E
                   /\ F
-===="#
-            .to_string();
-        run_roundtrip_test(expected);
+===="#,
+        );
     }
 
     #[test]
     fn jlist_with_comments() {
-        let expected = r#"---- MODULE Test ----
+        run_roundtrip_test(
+            r#"---- MODULE Test ----
 op == /\ A
       /\ \/ B 
 \* This is a comment
          \/ C
 (* This is another comment *)
       /\ D
-===="#
-            .to_string();
-        run_roundtrip_test(expected);
+===="#,
+        );
     }
 }

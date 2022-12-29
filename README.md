@@ -18,9 +18,8 @@ use tlauc::{rewrite, Mode};
 fn main() {
     let input = r#"---- MODULE Test ----
 op == \A r1 \in Real : \E r2 \in Real : r2 < r1
-===="#
-        .to_string();
-    println!("{}", rewrite(&input, Mode::AsciiToUnicode, false).unwrap());
+===="#;
+    println!("{}", rewrite(input, Mode::AsciiToUnicode, false).unwrap());
 }
 ```
 which will output:
@@ -36,10 +35,17 @@ Access the list of unicode mappings as follows:
 use tlauc::{SymbolMapping, get_unicode_mappings};
 
 fn main() {
-    let mappings: Vec<SymbolMapping> = get_unicode_mappings().unwrap();
+    let mappings: Vec<SymbolMapping> = get_unicode_mappings();
     println!("{:#?}", mappings);
 }
 ```
+
+## Build & Test
+
+1. Install Rust: https://www.rust-lang.org/tools/install
+1. Clone repo with the `--recurse-submodules` parameter
+1. Run `cargo build`
+1. Run `cargo test`
 
 ## Details
 
