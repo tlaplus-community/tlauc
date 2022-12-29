@@ -15,7 +15,7 @@ pub enum Mode {
 }
 
 #[derive(Debug)]
-pub enum TLAError {
+pub enum TlaError {
     InputFileParseError(Tree),
     InvalidTranslationError {
         input_tree: Tree,
@@ -28,13 +28,13 @@ pub fn rewrite(
     input: &str,
     mode: Mode,
     force: bool
-) -> Result<String, TLAError> {
+) -> Result<String, TlaError> {
     // Parse input TLA+ file and construct data structures to hold information about it
     let mut parser = Parser::new();
     parser.set_language(tree_sitter_tlaplus::language()).expect("Error loading TLA+ grammar");
     let input_tree = parser.parse(&input, None).unwrap();
     if !force && input_tree.root_node().has_error() {
-        return Err(TLAError::InputFileParseError(input_tree));
+        return Err(TlaError::InputFileParseError(input_tree));
     }
 
     let mut cursor = QueryCursor::new();
@@ -50,7 +50,7 @@ pub fn rewrite(
     let output = tla_lines.iter().map(|l| l.text.as_ref()).collect::<Vec<&str>>().join("\n");
     let output_tree = parser.parse(&output, None).unwrap();
     if !force && input_tree.root_node().to_sexp() != output_tree.root_node().to_sexp() {
-        return Err(TLAError::InvalidTranslationError {input_tree, output_tree, output});
+        return Err(TlaError::InvalidTranslationError {input_tree, output_tree, output});
     }
 
     Ok(output)
@@ -139,6 +139,22 @@ impl TlaLine {
             }
         }).collect()
     }
+
+    fn shift(&mut self, char_diff: i8, char_diff_start_index: usize, byte_diff: i8, byte_diff_start_index: usize) {
+        for jlist in &mut self.jlists {
+            if jlist.char_column > char_diff_start_index {
+                jlist.char_column = (jlist.char_column as i32 + char_diff as i32) as usize;
+            }
+        }
+
+        for symbol in &mut self.symbols {
+            if symbol.src_byte_range.start > byte_diff_start_index {
+                symbol.src_byte_range =
+                    ((symbol.src_byte_range.start as i32 + byte_diff as i32) as usize)
+                    ..((symbol.src_byte_range.end as i32 + byte_diff as i32) as usize);
+            }
+        }
+    }
 }
 
 fn mark_jlists(
@@ -208,18 +224,21 @@ fn mark_symbols(
         let line = &mut tla_lines[start_position.row];
         let src_byte_range = start_position.column..end_position.column;
         let src_symbol = &line.text[src_byte_range.clone()];
+        let target = mapping.target_symbol(mode).to_string();
         line.symbols.push(Symbol {
-            src_byte_range,
             char_diff: mapping.chars_added(mode, src_symbol),
-            target: mapping.target_symbol(mode).to_string()
+            byte_diff: ((src_byte_range.end - src_byte_range.start) as i32 - target.len() as i32) as i8,
+            src_byte_range,
+            target,
         });
     }
 }
 
 #[derive(Debug)]
 struct Symbol {
-    src_byte_range: Range<usize>,
     char_diff: i8,
+    byte_diff: i8,
+    src_byte_range: Range<usize>,
     target: String
 }
 
@@ -227,37 +246,35 @@ fn replace_symbols(tla_lines: &mut [TlaLine]) {
     for line_number in 0..tla_lines.len()-1 {
         let (prefix, suffix) = tla_lines.split_at_mut(line_number + 1);
         let line = &mut prefix[line_number];
-        for symbol in line.symbols.iter().rev() {
-            let symbol_end_char_index = line.text[..symbol.src_byte_range.end].chars().count();
+        while let Some(symbol) = line.symbols.pop() {
+            let symbol_start_char_index = line.text[..symbol.src_byte_range.start].chars().count();
             line.text.replace_range(symbol.src_byte_range.clone(), &symbol.target);
-            fix_alignment(&line, suffix, symbol, symbol_end_char_index);
+            line.shift(symbol.char_diff, symbol_start_char_index, symbol.byte_diff, symbol.src_byte_range.start);
+            fix_alignment(line, suffix, symbol.char_diff, symbol_start_char_index);
         }
     }
 }
 
-fn fix_alignment(line: &TlaLine, suffix: &mut [TlaLine], symbol: &Symbol, symbol_end_char_index: usize) {
-    if 0 == symbol.char_diff { return; }
+fn fix_alignment(line: &TlaLine, suffix: &mut [TlaLine], char_diff: i8, symbol_start_char_index: usize) {
+    if 0 == char_diff { return; }
     for jlist in &line.jlists {
-        if jlist.char_column <= symbol_end_char_index { continue; }
+        if jlist.char_column <= symbol_start_char_index { continue; }
         for &offset in &jlist.bullet_line_offsets {
             if 0 == offset { continue; }
-            let bullet_line = &mut suffix[offset - 1];
+            let (suffix_prefix, suffix_suffix) = suffix.split_at_mut(offset);
+            let bullet_line = &mut suffix_prefix[offset - 1];
             // Add or remove spaces from the start of the line
-            if symbol.char_diff < 0 {
-                bullet_line.text.drain(..(-symbol.char_diff as usize));
+            if char_diff < 0 {
+                bullet_line.text.drain(..(-char_diff as usize));
             } else {
-                bullet_line.text.insert_str(0, " ".repeat(symbol.char_diff as usize).as_ref());
+                bullet_line.text.insert_str(0, " ".repeat(char_diff as usize).as_ref());
             }
 
-            for jlist in &mut bullet_line.jlists {
-                jlist.char_column = (jlist.char_column as i32 + symbol.char_diff as i32) as usize;
-            }
+            // Since we are inserting ASCII spaces, byte_diff is equal to char_diff
+            bullet_line.shift(char_diff, 0, char_diff, 0);
 
-            for symbol in &mut bullet_line.symbols {
-                symbol.src_byte_range =
-                    ((symbol.src_byte_range.start as i32 + symbol.char_diff as i32) as usize)
-                    ..((symbol.src_byte_range.end as i32 + symbol.char_diff as i32) as usize);
-            }
+            // Recursively fix alignment of any jlists starting on this line
+            fix_alignment(bullet_line, suffix_suffix, char_diff, 0);
         }
     }
 }
@@ -281,11 +298,11 @@ mod tests {
         assert_eq!(0, cursor.matches(&query, tree.root_node(), "".as_bytes()).count());
     }
 
-    fn unwrap_conversion(input: Result<String, TLAError>) -> String {
+    fn unwrap_conversion(input: Result<String, TlaError>) -> String {
         match input {
             Ok(converted) => converted,
-            Err(TLAError::InputFileParseError(tree)) => { panic!("{}", tree.root_node().to_sexp()) },
-            Err(TLAError::InvalidTranslationError { input_tree: _, output_tree: _, output }) => { panic!("{}", output) }
+            Err(TlaError::InputFileParseError(tree)) => { panic!("{}", tree.root_node().to_sexp()) },
+            Err(TlaError::InvalidTranslationError { input_tree: _, output_tree: _, output }) => { panic!("{}", output) }
         }
     }
 
