@@ -10,13 +10,26 @@ use std::io::{
 use std::convert::TryInto;
 */
 
+use tlauc::{get_unicode_mappings, SymbolMapping};
 use tlauc::{rewrite, Mode};
 
 fn main() {
-    let input = r#"---- MODULE Test ----
-op == \A r1 \in Real : \E r2 \in Real : r2 < r1
+    let input = r#"---- MODULE TotalOrder ----
+reflexive(S) == \A a \in S : a <= a
+transitive(S) == \A a, b, c \in S : (a <= b /\ b <= c) => (a <= c)
+antisymmetric(S) == \A a, b \in S : (a <= b /\ a >= b) => (a = b)
+total(S) == \A a, b \in S : a <= b \/ a >= b
+is_totally_ordered(S) ==
+    /\ reflexive(S)
+    /\ transitive(S)
+    /\ antisymmetric(S)
+    /\ total(S)
+THEOREM reals_are_totally_ordered == is_totally_ordered(Real)
 ===="#;
     println!("{}", rewrite(input, Mode::AsciiToUnicode, false).unwrap());
+
+    let mappings: Vec<SymbolMapping> = get_unicode_mappings();
+    println!("{:#?}", mappings);
 }
 
 /*

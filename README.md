@@ -17,15 +17,33 @@ use tlauc::{rewrite, Mode};
 
 fn main() {
     let input = r#"---- MODULE Test ----
-op == \A r1 \in Real : \E r2 \in Real : r2 < r1
+reflexive(S) == \A a \in S : a <= a
+transitive(S) == \A a, b, c \in S : (a <= b /\ b <= c) => (a <= c)
+antisymmetric(S) == \A a, b \in S : (a <= b /\ a >= b) => (a = b)
+total(S) == \A a, b \in S : a <= b \/ a >= b
+is_totally_ordered(S) ==
+    /\ reflexive(S)
+    /\ transitive(S)
+    /\ antisymmetric(S)
+    /\ total(S)
+THEOREM reals_are_totally_ordered == is_totally_ordered(Real)
 ===="#;
     println!("{}", rewrite(input, Mode::AsciiToUnicode, false).unwrap());
 }
 ```
 which will output:
 ```tla
----- MODULE Test ----
-op ≜ ∀ r1 ∈ ℝ : ∃ r2 ∈ ℝ : r2 < r1
+---- MODULE TotalOrder ----
+reflexive(S) ≜ ∀ a ∈ S : a ≤ a
+transitive(S) ≜ ∀ a, b, c ∈ S : (a ≤ b ∧ b ≤ c) ⇒ (a ≤ c)
+antisymmetric(S) ≜ ∀ a, b ∈ S : (a ≤ b ∧ a ≥ b) ⇒ (a = b)
+total(S) ≜ ∀ a, b ∈ S : a ≤ b ∨ a ≥ b
+is_totally_ordered(S) ≜
+    ∧ reflexive(S)
+    ∧ transitive(S)
+    ∧ antisymmetric(S)
+    ∧ total(S)
+THEOREM reals_are_totally_ordered ≜ is_totally_ordered(ℝ)
 ====
 ```
 Details of reading & writing files are left to the user.
