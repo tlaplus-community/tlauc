@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2018"
 
 [dependencies]
+anyhow = "1.0.68"
 clap = { version = "4.0.32", features = ["derive"] }
 csv = "1.1.6"
 serde = { version = "1.0.149", features = ["derive"] }

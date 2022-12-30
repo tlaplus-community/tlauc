@@ -1,13 +1,13 @@
-# TLAUC: The TLA+ Unicode Converter
+# TLAUC: The TLA⁺ Unicode Converter
 [![Build & Test](https://github.com/tlaplus-community/tlauc/actions/workflows/ci.yml/badge.svg)](https://github.com/tlaplus-community/tlauc/actions/workflows/ci.yml)
 
 ## Overview
 
-This crate will take any ASCII TLA+ file and convert all its symbols to their Unicode equivalent, or take any Unicode TLA+ file and convert all its symbols to their ASCII equivalent.
+This crate will take any ASCII TLA⁺ file and convert all its symbols to their Unicode equivalent, or take any Unicode TLA⁺ file and convert all its symbols to their ASCII equivalent.
 The symbol mapping can be found in the [`./resources/tla-unicode.csv`](./resources/tla-unicode.csv) file, taken from the [tlaplus-standard](https://github.com/tlaplus-community/tlaplus-standard) repo.
 The crate also provides programmatic access to these mappings.
 
-You can use this crate to, for example, write TLA+ Unicode specs with the [tlaplus-nvim-plugin](https://github.com/tlaplus-community/tlaplus-nvim-plugin) then convert them into ASCII for use with SANY and TLC.
+You can use this crate to, for example, write TLA⁺ Unicode specs with the [tlaplus-nvim-plugin](https://github.com/tlaplus-community/tlaplus-nvim-plugin) then convert them into ASCII for use with SANY and TLC.
 
 ## Use
 
@@ -21,16 +21,16 @@ fn main() {
     let input = r#"---- MODULE TotalOrder ----
 EXTENDS Reals
 
-reflexive(S) == \A a \in S : a <= a
-transitive(S) == \A a, b, c \in S : (a <= b /\ b <= c) => (a <= c)
-antisymmetric(S) == \A a, b \in S : (a <= b /\ a >= b) => (a = b)
-total(S) == \A a, b \in S : a <= b \/ a >= b
-is_totally_ordered(S) ==
-    /\ reflexive(S)
-    /\ transitive(S)
-    /\ antisymmetric(S)
-    /\ total(S)
-THEOREM reals_are_totally_ordered == is_totally_ordered(Real)
+Reflexive(S) == \A a \in S : a <= a
+Transitive(S) == \A a, b, c \in S : (a <= b /\ b <= c) => (a <= c)
+Antisymmetric(S) == \A a, b \in S : (a <= b /\ a >= b) => (a = b)
+Total(S) == \A a, b \in S : a <= b \/ a >= b
+IsTotallyOrdered(S) ==
+    /\ Reflexive(S)
+    /\ Transitive(S)
+    /\ Antisymmetric(S)
+    /\ Rotal(S)
+THEOREM RealsTotallyOrdered == IsTotallyOrdered(Real)
 ===="#;
     println!("{}", rewrite(input, Mode::AsciiToUnicode, false).unwrap());
 }
@@ -40,16 +40,16 @@ which will output:
 ---- MODULE TotalOrder ----
 EXTENDS Reals
 
-reflexive(S) ≜ ∀ a ∈ S : a ≤ a
-transitive(S) ≜ ∀ a, b, c ∈ S : (a ≤ b ∧ b ≤ c) ⇒ (a ≤ c)
-antisymmetric(S) ≜ ∀ a, b ∈ S : (a ≤ b ∧ a ≥ b) ⇒ (a = b)
-total(S) ≜ ∀ a, b ∈ S : a ≤ b ∨ a ≥ b
-is_totally_ordered(S) ≜
-    ∧ reflexive(S)
-    ∧ transitive(S)
-    ∧ antisymmetric(S)
-    ∧ total(S)
-THEOREM reals_are_totally_ordered ≜ is_totally_ordered(ℝ)
+Reflexive(S) ≜ ∀ a ∈ S : a ≤ a
+Transitive(S) ≜ ∀ a, b, c ∈ S : (a ≤ b ∧ b ≤ c) ⇒ (a ≤ c)
+Antisymmetric(S) ≜ ∀ a, b ∈ S : (a ≤ b ∧ a ≥ b) ⇒ (a = b)
+Total(S) ≜ ∀ a, b ∈ S : a ≤ b ∨ a ≥ b
+IsTotallyOrdered(S) ≜
+    ∧ Reflexive(S)
+    ∧ Transitive(S)
+    ∧ Antisymmetric(S)
+    ∧ Total(S)
+THEOREM RealsTotallyOrdered ≜ IsTotallyOrdered(ℝ)
 ====
 ```
 Details of reading & writing files are left to the user.
@@ -73,10 +73,10 @@ fn main() {
 
 ## Details
 
-TLA+ often has several ASCII symbols all representing the same operator (for example, `<=`, `=<`, and `\leq`); these will all map to the same Unicode symbol (`≤`), and when mapping back to ASCII the first ASCII symbol in the semicolon-separated CSV cell will be used (`<=`).
-Users may use this tool to convert their old ASCII TLA+ files to more-easily-read Unicode symbols, or convert their Unicode TLA+ files to ASCII for tools which cannot yet handle Unicode.
+TLA⁺ often has several ASCII symbols all representing the same operator (for example, `<=`, `=<`, and `\leq`); these will all map to the same Unicode symbol (`≤`), and when mapping back to ASCII the first ASCII symbol in the semicolon-separated CSV cell will be used (`<=`).
+Users may use this tool to convert their old ASCII TLA⁺ files to more-easily-read Unicode symbols, or convert their Unicode TLA⁺ files to ASCII for tools which cannot yet handle Unicode.
 
-The reason this program isn't just a simple search & replace is that blank space and column alignment matters for some TLA+ constructs, specifically conjunction and disjunction lists (henceforth called jlists):
+The reason this program isn't just a simple search & replace is that blank space and column alignment matters for some TLA⁺ constructs, specifically conjunction and disjunction lists (henceforth called jlists):
 
 ```tla
 def == /\ A
@@ -101,7 +101,7 @@ Thus we need to analyze the parse tree to find all jlists, and ensure our modifi
 For this purpose we use [tree-sitter-tlaplus](https://github.com/tlaplus-community/tree-sitter-tlaplus), which correctly parses these constructs.
 The tree-sitter parse tree for the above (correctly aligned) code snippet is:
 
-```lisp
+```sexp
 (operator_definition (identifier) (def_eq)
   (conj_list
     (conj_item (bullet_conj) (identifier_ref))
@@ -116,16 +116,16 @@ The tree-sitter parse tree for the above (correctly aligned) code snippet is:
   )
 )
 ```
-Note that for an optimal TLA+ unicode experience, you need a monospace font that renders all the relevant unicode math symbols in fixed width.
+Note that for an optimal TLA⁺ unicode experience, you need a monospace font that renders all the relevant unicode math symbols in fixed width.
 Without this feature, displayed jlist alignment may differ from actual jlist alignment.
 
-For safety, the program checks to ensure the converted TLA+ file has the exact same parse tree as the original.
+For safety, the program checks to ensure the converted TLA⁺ file has the exact same parse tree as the original.
 It also will not convert the input file if it contains any parse errors.
 Both of these checks can be bypassed with the `--force` command line parameter (also exposed in the library).
 
 ## Algorithm
 
-The high-level algorithm is as follows:
+The high-level conversion algorithm is as follows:
 
 1. For each line in the input file, create two vectors: a jlist vector, and a symbol vector.
 1. Parse the input file and use tree-sitter queries to identify the locations & scope of all jlists.

@@ -22,11 +22,11 @@ pub enum TlaError {
 }
 
 pub fn rewrite(input: &str, mode: Mode, force: bool) -> Result<String, TlaError> {
-    // Parse input TLA+ file and construct data structures to hold information about it
+    // Parse input TLA⁺ file and construct data structures to hold information about it
     let mut parser = Parser::new();
     parser
         .set_language(tree_sitter_tlaplus::language())
-        .expect("Error loading TLA+ grammar");
+        .expect("Error loading TLA⁺ grammar");
     let input_tree = parser.parse(input, None).unwrap();
     if !force && input_tree.root_node().has_error() {
         return Err(TlaError::InputFileParseError(input_tree));
