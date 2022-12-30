@@ -13,6 +13,18 @@ You can use this crate to, for example, write TLA⁺ Unicode specs with the [tla
 
 This crate contains both a library and its command line wrapper.
 
+From the command line, convert a TLA⁺ file from ASCII to Unicode as follows:
+```sh
+tlauc unicode --input Ascii.tla --output Unicode.tla
+```
+Convert from Unicode to ASCII:
+```sh
+tlauc ascii --input Unicode.tla --output Ascii.tla
+```
+By default, the program will fail if a file exists at the output location; override this behavior with the `--overwrite` flag.
+There are also several safety checks performed during the translation process, like that the input spec parses correctly and that the output spec has the same parse tree as the input spec.
+You can override these safety checks with the `-f` or `--force` flag, which also sets the `--overwrite` flag.
+
 Consume the library from your own code as follows:
 ```rs
 use tlauc::{rewrite, Mode};

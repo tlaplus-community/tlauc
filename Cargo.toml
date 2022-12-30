@@ -1,6 +1,13 @@
 [package]
 name = "tlauc"
+description = "Rewrites TLA⁺ specs to use Unicode symbols instead of ASCII, and vice-versa"
 version = "0.1.0"
+authors = ["Andrew Helwer <qts7mv7t1@mozmail.com>"]
+repository = "https://github.com/tlaplus-community/tlauc"
+license = "MIT"
+readme = "README.md"
+keywords = ["tlaplus", "unicode"]
+categories = ["command-line-utilities", "text-editors"]
 edition = "2018"
 
 [dependencies]

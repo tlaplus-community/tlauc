@@ -4,36 +4,34 @@ use std::fs::File;
 use std::io::{Read, Write};
 use tlauc::{rewrite, Mode, TlaError};
 
-#[derive(Debug, Parser)]
-#[command(
-    author = "Andrew Helwer (ahelwer.ca)",
-    version = "0.1.0",
-    about = "Converts symbols in TLA⁺ specs to and from unicode",
-    long_about = None
-)]
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
 struct Args {
     #[command(subcommand)]
     action: Action,
 }
 
-#[derive(Debug, Subcommand)]
+#[derive(Subcommand)]
 enum Action {
+    #[command(about = "Convert symbols in a TLA⁺ file from ASCII to Unicode")]
     Unicode(Config),
+
+    #[command(about = "Convert symbols in a TLA⁺ file from Unicode to ASCII")]
     Ascii(Config),
 }
 
-#[derive(Debug, Parser)]
+#[derive(Parser)]
 struct Config {
-    #[arg(short, long)]
+    #[arg(short, long, help = "Path to TLA⁺ file to read as input")]
     input: String,
 
-    #[arg(short, long)]
+    #[arg(short, long, help = "Path to file to use as output; will fail if file already exists unless using --overwrite")]
     output: String,
 
-    #[arg(short, long)]
+    #[arg(short, long, default_value_t = false, help = "Whether to force a best-effort conversion, ignoring TLA⁺ parse errors")]
     force: bool,
 
-    #[arg(long)]
+    #[arg(long, default_value_t = false, help = "Whether to overwrite any file existing at the output path; also set by --force")]
     overwrite: bool,
 }
 
@@ -54,7 +52,7 @@ fn convert(config: &Config, mode: Mode) -> Result<()> {
             .read_to_string(&mut input)
             .context(format!("Failed to read input file [{}]", &config.input))?;
     }
-    match File::options().write(true).create_new(!config.overwrite).open(&config.output) {
+    match File::options().write(true).create_new(!(config.overwrite || config.force)).open(&config.output) {
         Ok(mut output_file) => {
             match rewrite(&input, mode, config.force) {
                 Ok(output) => {
