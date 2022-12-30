@@ -27,7 +27,7 @@ pub fn rewrite(input: &str, mode: Mode, force: bool) -> Result<String, TlaError>
     parser
         .set_language(tree_sitter_tlaplus::language())
         .expect("Error loading TLA+ grammar");
-    let input_tree = parser.parse(&input, None).unwrap();
+    let input_tree = parser.parse(input, None).unwrap();
     if !force && input_tree.root_node().has_error() {
         return Err(TlaError::InputFileParseError(input_tree));
     }
@@ -87,7 +87,7 @@ where
     D: Deserializer<'de>,
 {
     let s: &str = Deserialize::deserialize(deserializer)?;
-    Ok(s.split(";").map(|s| s.to_string()).collect())
+    Ok(s.split(';').map(|s| s.to_string()).collect())
 }
 
 impl SymbolMapping {
@@ -99,7 +99,7 @@ impl SymbolMapping {
         let query = self
             .ascii
             .iter()
-            .map(|a| a.replace("\\", "\\\\"))
+            .map(|a| a.replace('\\', "\\\\"))
             .map(|a| format!("\"{}\"", a))
             .reduce(|a, b| a + " " + &b)
             .unwrap();
@@ -236,7 +236,7 @@ fn mark_symbols(tree: &Tree, cursor: &mut QueryCursor, tla_lines: &mut [TlaLine]
         .map(|s| s.source_query(mode))
         .collect::<Vec<String>>()
         .join("");
-    let query = Query::new(tree_sitter_tlaplus::language(), &queries).unwrap();
+    let query = Query::new(tree_sitter_tlaplus::language(), queries).unwrap();
 
     for capture in cursor.matches(&query, tree.root_node(), "".as_bytes()) {
         let capture = capture.captures[0];

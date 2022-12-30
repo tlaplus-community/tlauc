@@ -7,6 +7,8 @@ This crate will take any ASCII TLA+ file and convert all its symbols to their Un
 The symbol mapping can be found in the [`./resources/tla-unicode.csv`](./resources/tla-unicode.csv) file, taken from the [tlaplus-standard](https://github.com/tlaplus-community/tlaplus-standard) repo.
 The crate also provides programmatic access to these mappings.
 
+You can use this crate to, for example, write TLA+ Unicode specs with the [tlaplus-nvim-plugin](https://github.com/tlaplus-community/tlaplus-nvim-plugin) then convert them into ASCII for use with SANY and TLC.
+
 ## Use
 
 This crate contains both a library and its command line wrapper.
@@ -16,7 +18,9 @@ Consume the library from your own code as follows:
 use tlauc::{rewrite, Mode};
 
 fn main() {
-    let input = r#"---- MODULE Test ----
+    let input = r#"---- MODULE TotalOrder ----
+EXTENDS Reals
+
 reflexive(S) == \A a \in S : a <= a
 transitive(S) == \A a, b, c \in S : (a <= b /\ b <= c) => (a <= c)
 antisymmetric(S) == \A a, b \in S : (a <= b /\ a >= b) => (a = b)
@@ -34,6 +38,8 @@ THEOREM reals_are_totally_ordered == is_totally_ordered(Real)
 which will output:
 ```tla
 ---- MODULE TotalOrder ----
+EXTENDS Reals
+
 reflexive(S) ≜ ∀ a ∈ S : a ≤ a
 transitive(S) ≜ ∀ a, b, c ∈ S : (a ≤ b ∧ b ≤ c) ⇒ (a ≤ c)
 antisymmetric(S) ≜ ∀ a, b ∈ S : (a ≤ b ∧ a ≥ b) ⇒ (a = b)
