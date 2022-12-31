@@ -67,7 +67,7 @@ fn convert(config: &Config, mode: Mode) -> Result<()> {
     }
     match File::options().write(true).create_new(!(config.overwrite || config.force)).open(&config.output) {
         Ok(mut output_file) => {
-            match rewrite(&input, mode, config.force) {
+            match rewrite(&input, &mode, config.force) {
                 Ok(output) => {
                     output_file.write_all(output.as_bytes()).context(format!("Failed to write to output file [{}]", &config.output))?;
                     Ok(())

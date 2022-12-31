@@ -22,18 +22,19 @@ pub enum TlaError {
     },
 }
 
-pub fn rewrite(input: &str, mode: Mode, force: bool) -> Result<String, TlaError> {
-    // Parse input TLA⁺ file and construct data structures to hold information about it
+pub fn rewrite(input: &str, mode: &Mode, force: bool) -> Result<String, TlaError> {
     let mut parser = Parser::new();
     parser
         .set_language(tree_sitter_tlaplus::language())
         .expect("Error loading TLA⁺ grammar");
+    let mut cursor = QueryCursor::new();
+    //
+    // Parse input TLA⁺ file and construct data structures to hold information about it
     let input_tree = parser.parse(input, None).unwrap();
     if !force && input_tree.root_node().has_error() {
         return Err(TlaError::InputFileParseError(input_tree));
     }
 
-    let mut cursor = QueryCursor::new();
     let mut tla_lines = TlaLine::construct_from(input);
 
     // Identify & replace symbols
@@ -99,7 +100,7 @@ fn simultaneous_step(
     let (input_next, output_next) = (step(input_cursor), step(output_cursor));
     if input_next != output_next {
         return Err(format!(
-            "Input: {:?}, output: {:?}",
+            "First diff: Input {:?} Output {:?}",
             input_cursor.node(),
             output_cursor.node()
         ));
@@ -116,7 +117,7 @@ fn check_node_equality(
         && input_cursor.node().kind() != output_cursor.node().kind()
     {
         return Err(format!(
-            "Input: {:?}, output: {:?}",
+            "First diff: Input {:?} Output {:?}",
             input_cursor.node(),
             output_cursor.node()
         ));
@@ -281,7 +282,7 @@ impl JList {
     fn query() -> Query {
         Query::new(
             tree_sitter_tlaplus::language(),
-            "(conj_list) @conj_list (disj_list) @disj_list",
+            "[(conj_list) (disj_list)] @jlist",
         )
         .unwrap()
     }
@@ -442,9 +443,9 @@ mod tests {
     }
 
     fn run_roundtrip_test(expected: &str) {
-        let intermediate = unwrap_conversion(rewrite(expected, Mode::AsciiToUnicode, false));
+        let intermediate = unwrap_conversion(rewrite(expected, &Mode::AsciiToUnicode, false));
         check_ascii_replaced(&intermediate);
-        let actual = unwrap_conversion(rewrite(&intermediate, Mode::UnicodeToAscii, false));
+        let actual = unwrap_conversion(rewrite(&intermediate, &Mode::UnicodeToAscii, false));
         assert_eq!(expected, actual);
     }
 
@@ -507,9 +508,9 @@ op == x \otimes y
 op == x \circ y
 op == P \times Q
 ===="#;
-        let intermediate = unwrap_conversion(rewrite(expected, Mode::AsciiToUnicode, false));
+        let intermediate = unwrap_conversion(rewrite(expected, &Mode::AsciiToUnicode, false));
         check_ascii_replaced(&intermediate);
-        let actual = unwrap_conversion(rewrite(&intermediate, Mode::UnicodeToAscii, false));
+        let actual = unwrap_conversion(rewrite(&intermediate, &Mode::UnicodeToAscii, false));
         // Only first and last lines should be the same
         for (i, (expected_line, actual_line)) in zip(expected.lines(), actual.lines()).enumerate() {
             if i == 0 || i == expected.lines().count() - 1 {

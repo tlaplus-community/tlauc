@@ -1,8 +1,10 @@
 mod corpus_tests {
     use glob::glob;
+    use rayon::prelude::*;
     use std::ffi::OsStr;
     use std::fs::File;
     use std::io::Read;
+    use std::path::PathBuf;
     use std::time::Instant;
     use tlauc::{rewrite, Mode, TlaError};
 
@@ -22,44 +24,45 @@ mod corpus_tests {
             "Synod.tla",
             "WellFoundedInduction.tla",
         ];
+        println!("SKIPPING {:?}", skip);
         let skip: Vec<&OsStr> = skip.iter().map(|s| OsStr::new(s)).collect();
-        for entry in glob("tests/corpus/**/*.tla").unwrap() {
-            if let Ok(path) = entry {
-                if skip.contains(&path.file_name().unwrap()) {
-                    println!("SKIPPING {:?}", path);
-                    continue;
-                }
+        let paths: Vec<PathBuf> = glob("tests/corpus/**/*.tla")
+            .unwrap()
+            .into_iter()
+            .filter_map(|path| path.ok())
+            .filter(|path| !skip.contains(&path.file_name().unwrap()))
+            .collect();
 
-                println!("{:?}", path);
-                let mut input = String::new();
-                {
-                    let mut input_file = File::open(&path)
-                        .expect(&format!("Failed to open input file [{:?}]", path));
-                    input_file
-                        .read_to_string(&mut input)
-                        .expect(&format!("Failed to read input file [{:?}]", path));
-                }
-
-                match rewrite(&input, Mode::AsciiToUnicode, false) {
-                    Ok(_) => (),
-                    Err(TlaError::InputFileParseError(_)) => {
-                        panic!("Failed to parse input file [{:?}]", path)
-                    }
-                    Err(TlaError::OutputFileParseError(_)) => {
-                        panic!("Failed to parse output file [{:?}]", path)
-                    }
-                    Err(TlaError::InvalidTranslationError {
-                        input_tree: _,
-                        output_tree: _,
-                        output: _,
-                        first_diff,
-                    }) => panic!(
-                        "Input/output parse tree mismatch for [{:?}]: [{:?}]",
-                        path, first_diff
-                    ),
-                }
+        paths.par_iter().for_each(|path| {
+            println!("{:?}", path);
+            let mut input = String::new();
+            {
+                let mut input_file =
+                    File::open(&path).expect(&format!("Failed to open input file [{:?}]", path));
+                input_file
+                    .read_to_string(&mut input)
+                    .expect(&format!("Failed to read input file [{:?}]", path));
             }
-        }
+
+            match rewrite(&input, &Mode::AsciiToUnicode, false) {
+                Ok(_) => (),
+                Err(TlaError::InputFileParseError(_)) => {
+                    panic!("Failed to parse input file [{:?}]", path)
+                }
+                Err(TlaError::OutputFileParseError(_)) => {
+                    panic!("Failed to parse output file [{:?}]", path)
+                }
+                Err(TlaError::InvalidTranslationError {
+                    input_tree: _,
+                    output_tree: _,
+                    output: _,
+                    first_diff,
+                }) => panic!(
+                    "Input/output parse tree mismatch for [{:?}]: [{:?}]",
+                    path, first_diff
+                ),
+            }
+        });
 
         println!("Corpus tests took {} seconds", start.elapsed().as_secs());
     }

@@ -168,7 +168,8 @@ op ≜ ∧ A
       ⇒ C
 ```
 So this changes `(A ∧ B) ⇒ C` into `A ∧ (B ⇒ C)`, absolutely a different logical expression.
-The solution to this edge case is to look for infix operator nodes that are the parent of jlist nodes, and record the operator symbol column offset relative to the jlist column.
+The solution to this edge case is to look for infix operator nodes that are the parent of jlist nodes where the jlist is the left-hand expression, and record the operator symbol column offset relative to the jlist column.
+The tree-sitter query identifying these nodes is `(bound_infix_op lhs: [(conj_list) (disj_list)]) @capture`.
 This offset must be maintained as the jlist is shifted, potentially triggering further recursive shifts.
 The edge case is also present in the other direction when converting from Unicode to ASCII.
 Somewhat humorously, this edge case was also seen to manifest when it "corrected" a seemingly-mistakenly-misaligned jlist, as in:
