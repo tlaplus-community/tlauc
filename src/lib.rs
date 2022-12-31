@@ -3,7 +3,7 @@ use crate::strquantity::{ByteQuantity, CharQuantity};
 
 use serde::{Deserialize, Deserializer};
 use std::ops::Range;
-use tree_sitter::{Parser, Point, Query, QueryCursor, Tree, TreeCursor};
+use tree_sitter::{Parser, Query, QueryCursor, Tree, TreeCursor};
 
 pub enum Mode {
     AsciiToUnicode,
@@ -231,7 +231,6 @@ impl TlaLine {
     ) {
         for jlist in &mut self.jlists {
             if jlist.char_column > char_diff_start_index {
-                //jlist.char_column = CharQuantity((jlist.char_column as i32 + char_diff as i32) as usize);
                 jlist.char_column = jlist.char_column + char_diff;
             }
         }
@@ -249,7 +248,14 @@ impl TlaLine {
 struct JList {
     char_column: CharQuantity<usize>,
     bullet_line_offsets: Vec<usize>,
-    terminating_infix_op_offset: Option<Point>,
+    terminating_infix_op_offset: Option<Offset>,
+}
+
+#[derive(Debug)]
+struct Offset {
+    row: usize,
+    column_char: CharQuantity<i8>,
+    column_byte: ByteQuantity<i8>,
 }
 
 impl JList {
@@ -306,7 +312,10 @@ fn mark_jlists(tree: &Tree, query_cursor: &mut QueryCursor, tla_lines: &mut [Tla
         let start_line = infix_op_node.start_position().row;
         let line = &mut tla_lines[start_line];
         let jlist_node = infix_op_node.child_by_field_name("lhs").unwrap();
-        //let jlist = line.jlists.next(|j| j.column == jlist_node.start_position().column).unwrap();
+        let char_column = CharQuantity(line.text[..jlist_node.start_position().column].chars().count());
+        let jlist = &mut line.jlists.iter().find(|j| j.char_column == char_column).unwrap();
+        let symbol_node = infix_op_node.child_by_field_name("symbol").unwrap();
+        let row_offset = symbol_node.start_position().row - start_line;
     }
 }
 
