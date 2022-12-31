@@ -25,13 +25,26 @@ struct Config {
     #[arg(short, long, help = "Path to TLA⁺ file to read as input")]
     input: String,
 
-    #[arg(short, long, help = "Path to file to use as output; will fail if file already exists unless using --overwrite")]
+    #[arg(
+        short,
+        long,
+        help = "Path to file to use as output; will fail if file already exists unless using --overwrite"
+    )]
     output: String,
 
-    #[arg(short, long, default_value_t = false, help = "Whether to force a best-effort conversion, ignoring TLA⁺ parse errors")]
+    #[arg(
+        short,
+        long,
+        default_value_t = false,
+        help = "Whether to force a best-effort conversion, ignoring TLA⁺ parse errors"
+    )]
     force: bool,
 
-    #[arg(long, default_value_t = false, help = "Whether to overwrite any file existing at the output path; also set by --force")]
+    #[arg(
+        long,
+        default_value_t = false,
+        help = "Whether to overwrite any file existing at the output path; also set by --force"
+    )]
     overwrite: bool,
 }
 
@@ -61,7 +74,10 @@ fn convert(config: &Config, mode: Mode) -> Result<()> {
                 },
                 Err(TlaError::InputFileParseError(_)) => Err(anyhow!("Failed to correctly parse input TLA⁺ file; use --force flag to bypass this check.")),
                 Err(TlaError::OutputFileParseError(_)) => Err(anyhow!("Failed to correctly parse converted TLA⁺ output; this is a bug, please report it to the maintainer! Use --force to bypass this check (not recommended).")),
-                Err(TlaError::InvalidTranslationError { .. }) => Err(anyhow!("Converted TLA⁺ parse tree differs from original; this is a bug, please report it to the maintainer! Use --force to bypass this check (not recommended)."))
+                Err(TlaError::InvalidTranslationError { input_tree: _, output_tree: _, output: _, first_diff }) => {
+                    let err_msg = "Converted TLA⁺ parse tree differs from original; this is a bug, please report it to the maintainer! Use --force to bypass this check (not recommended).";
+                    Err(anyhow!("{}\n{}", err_msg, first_diff))
+                }
             }
         },
         Err(e) => {

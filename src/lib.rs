@@ -18,6 +18,7 @@ pub enum TlaError {
         input_tree: Tree,
         output_tree: Tree,
         output: String,
+        first_diff: String,
     },
 }
 
@@ -51,16 +52,77 @@ pub fn rewrite(input: &str, mode: Mode, force: bool) -> Result<String, TlaError>
         if output_tree.root_node().has_error() {
             return Err(TlaError::OutputFileParseError(output_tree));
         }
-        if input_tree.root_node().to_sexp() != output_tree.root_node().to_sexp() {
+        if let Err(first_diff) = compare_parse_trees(&input_tree, &output_tree) {
             return Err(TlaError::InvalidTranslationError {
                 input_tree,
                 output_tree,
                 output,
+                first_diff,
             });
         }
     }
 
     Ok(output)
+}
+
+fn compare_parse_trees(input_tree: &Tree, output_tree: &Tree) -> Result<(), String> {
+    let mut input_cursor: TreeCursor = input_tree.walk();
+    let mut output_cursor: TreeCursor = output_tree.walk();
+
+    loop {
+        check_node_equality(&input_cursor, &output_cursor)?;
+        if !simultaneous_step(&mut input_cursor, &mut output_cursor, |c| {
+            c.goto_first_child()
+        })? {
+            loop {
+                if !simultaneous_step(&mut input_cursor, &mut output_cursor, |c| {
+                    c.goto_next_sibling()
+                })? {
+                    if !simultaneous_step(&mut input_cursor, &mut output_cursor, |c| {
+                        c.goto_parent()
+                    })? {
+                        return Ok(());
+                    }
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+}
+
+fn simultaneous_step(
+    input_cursor: &mut TreeCursor,
+    output_cursor: &mut TreeCursor,
+    step: fn(&mut TreeCursor) -> bool,
+) -> Result<bool, String> {
+    let (input_next, output_next) = (step(input_cursor), step(output_cursor));
+    if input_next != output_next {
+        return Err(format!(
+            "Input: {:?}, output: {:?}",
+            input_cursor.node(),
+            output_cursor.node()
+        ));
+    }
+
+    Ok(input_next)
+}
+
+fn check_node_equality(
+    input_cursor: &TreeCursor,
+    output_cursor: &TreeCursor,
+) -> Result<(), String> {
+    if (input_cursor.node().is_named() || output_cursor.node().is_named())
+        && input_cursor.node().kind() != output_cursor.node().kind()
+    {
+        return Err(format!(
+            "Input: {:?}, output: {:?}",
+            input_cursor.node(),
+            output_cursor.node()
+        ));
+    }
+
+    Ok(())
 }
 
 pub fn get_unicode_mappings() -> Vec<SymbolMapping> {
@@ -371,9 +433,10 @@ mod tests {
             Err(TlaError::InvalidTranslationError {
                 input_tree: _,
                 output_tree: _,
-                output,
+                output: _,
+                first_diff,
             }) => {
-                panic!("{}", output)
+                panic!("{}", first_diff)
             }
         }
     }
