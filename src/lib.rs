@@ -3,7 +3,7 @@ use crate::strquantity::{ByteQuantity, CharQuantity};
 
 use serde::{Deserialize, Deserializer};
 use std::ops::Range;
-use tree_sitter::{Parser, Query, QueryCursor, Tree, TreeCursor};
+use tree_sitter::{Parser, Point, Query, QueryCursor, Tree, TreeCursor};
 
 pub enum Mode {
     AsciiToUnicode,
@@ -126,12 +126,6 @@ fn check_node_equality(
     Ok(())
 }
 
-pub fn get_unicode_mappings() -> Vec<SymbolMapping> {
-    let csv = include_str!("../resources/tla-unicode.csv");
-    let mut reader = csv::Reader::from_reader(csv.as_bytes());
-    reader.deserialize().map(|result| result.unwrap()).collect()
-}
-
 #[derive(Debug, Deserialize)]
 pub struct SymbolMapping {
     #[serde(rename = "Name")]
@@ -143,14 +137,6 @@ pub struct SymbolMapping {
     ascii: Vec<String>,
     #[serde(rename = "Unicode")]
     unicode: String,
-}
-
-fn vec_from_semicolon_separated_str<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let s: &str = Deserialize::deserialize(deserializer)?;
-    Ok(s.split(';').map(|s| s.to_string()).collect())
 }
 
 impl SymbolMapping {
@@ -203,6 +189,20 @@ impl SymbolMapping {
     }
 }
 
+fn vec_from_semicolon_separated_str<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s: &str = Deserialize::deserialize(deserializer)?;
+    Ok(s.split(';').map(|s| s.to_string()).collect())
+}
+
+pub fn get_unicode_mappings() -> Vec<SymbolMapping> {
+    let csv = include_str!("../resources/tla-unicode.csv");
+    let mut reader = csv::Reader::from_reader(csv.as_bytes());
+    reader.deserialize().map(|result| result.unwrap()).collect()
+}
+
 #[derive(Debug)]
 struct TlaLine {
     text: String,
@@ -245,6 +245,35 @@ impl TlaLine {
     }
 }
 
+#[derive(Debug)]
+struct JList {
+    char_column: CharQuantity<usize>,
+    bullet_line_offsets: Vec<usize>,
+    terminating_infix_op_offset: Option<Point>,
+}
+
+impl JList {
+    fn query() -> Query {
+        Query::new(
+            tree_sitter_tlaplus::language(),
+            "[(conj_list) (disj_list)] @jlist",
+        )
+        .unwrap()
+    }
+
+    fn terminating_infix_op_query() -> Query {
+        Query::new(
+            tree_sitter_tlaplus::language(),
+            "bound_infix_op lhs: [(conj_list) (disj_list)]) @capture"
+        )
+        .unwrap()
+    }
+
+    fn is_jlist_item_node(cursor: &TreeCursor) -> bool {
+        "conj_item" == cursor.node().kind() || "disj_item" == cursor.node().kind()
+    }
+}
+
 fn mark_jlists(tree: &Tree, query_cursor: &mut QueryCursor, tla_lines: &mut [TlaLine]) {
     let mut tree_cursor: TreeCursor = tree.walk();
     for capture in query_cursor.matches(&JList::query(), tree.root_node(), "".as_bytes()) {
@@ -255,6 +284,7 @@ fn mark_jlists(tree: &Tree, query_cursor: &mut QueryCursor, tla_lines: &mut [Tla
         let mut jlist = JList {
             char_column,
             bullet_line_offsets: Vec::new(),
+            terminating_infix_op_offset: None,
         };
         tree_cursor.reset(node);
         tree_cursor.goto_first_child();
@@ -270,54 +300,13 @@ fn mark_jlists(tree: &Tree, query_cursor: &mut QueryCursor, tla_lines: &mut [Tla
 
         line.jlists.push(jlist);
     }
-}
 
-#[derive(Debug)]
-struct JList {
-    char_column: CharQuantity<usize>,
-    bullet_line_offsets: Vec<usize>,
-}
-
-impl JList {
-    fn query() -> Query {
-        Query::new(
-            tree_sitter_tlaplus::language(),
-            "[(conj_list) (disj_list)] @jlist",
-        )
-        .unwrap()
-    }
-
-    fn is_jlist_item_node(cursor: &TreeCursor) -> bool {
-        "conj_item" == cursor.node().kind() || "disj_item" == cursor.node().kind()
-    }
-}
-
-fn mark_symbols(tree: &Tree, cursor: &mut QueryCursor, tla_lines: &mut [TlaLine], mode: &Mode) {
-    let mappings = get_unicode_mappings();
-    let queries = &mappings
-        .iter()
-        .map(|s| s.source_query(mode))
-        .collect::<Vec<String>>()
-        .join("");
-    let query = Query::new(tree_sitter_tlaplus::language(), queries).unwrap();
-
-    for capture in cursor.matches(&query, tree.root_node(), "".as_bytes()) {
-        let capture = capture.captures[0];
-        let mapping = &mappings[capture.index as usize];
-        let start_position = capture.node.start_position();
-        let end_position = capture.node.end_position();
-        assert!(start_position.row == end_position.row);
-        let line = &mut tla_lines[start_position.row];
-        let src_byte_range = ByteQuantity(start_position.column)..ByteQuantity(end_position.column);
-        let src_symbol = &line.text[ByteQuantity::as_range(&src_byte_range)];
-        let target = mapping.target_symbol(mode).to_string();
-        line.symbols.push(Symbol {
-            char_diff: mapping.chars_added(mode, src_symbol),
-            byte_diff: ByteQuantity::<i8>::from(src_byte_range.end - src_byte_range.start)
-                - ByteQuantity(target.len() as i8),
-            src_byte_range,
-            target,
-        });
+    for capture in query_cursor.matches(&JList::terminating_infix_op_query(), tree.root_node(), "".as_bytes()) {
+        let infix_op_node = capture.captures[0].node;
+        let start_line = infix_op_node.start_position().row;
+        let line = &mut tla_lines[start_line];
+        let jlist_node = infix_op_node.child_by_field_name("lhs").unwrap();
+        //let jlist = line.jlists.next(|j| j.column == jlist_node.start_position().column).unwrap();
     }
 }
 
@@ -351,6 +340,35 @@ fn replace_symbols(tla_lines: &mut [TlaLine]) {
             );
             fix_alignment(line, suffix, symbol.char_diff, symbol_start_char_index);
         }
+    }
+}
+
+fn mark_symbols(tree: &Tree, cursor: &mut QueryCursor, tla_lines: &mut [TlaLine], mode: &Mode) {
+    let mappings = get_unicode_mappings();
+    let queries = &mappings
+        .iter()
+        .map(|s| s.source_query(mode))
+        .collect::<Vec<String>>()
+        .join("");
+    let query = Query::new(tree_sitter_tlaplus::language(), queries).unwrap();
+
+    for capture in cursor.matches(&query, tree.root_node(), "".as_bytes()) {
+        let capture = capture.captures[0];
+        let mapping = &mappings[capture.index as usize];
+        let start_position = capture.node.start_position();
+        let end_position = capture.node.end_position();
+        assert!(start_position.row == end_position.row);
+        let line = &mut tla_lines[start_position.row];
+        let src_byte_range = ByteQuantity(start_position.column)..ByteQuantity(end_position.column);
+        let src_symbol = &line.text[ByteQuantity::as_range(&src_byte_range)];
+        let target = mapping.target_symbol(mode).to_string();
+        line.symbols.push(Symbol {
+            char_diff: mapping.chars_added(mode, src_symbol),
+            byte_diff: ByteQuantity::<i8>::from(src_byte_range.end - src_byte_range.start)
+                - ByteQuantity(target.len() as i8),
+            src_byte_range,
+            target,
+        });
     }
 }
 
