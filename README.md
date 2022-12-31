@@ -152,3 +152,33 @@ If no jlists start to the right of that symbol the line, no further action is re
 
 1. After iterating through all lines, the process is complete; parse the converted tree and compare it to the original.
 They should be identical.
+
+## Edge Cases
+
+The most troublesome edge case is as follows:
+```tla
+---- Module Test ----
+op == /\ A
+      /\ B
+      => C
+====
+```
+When converting from ASCII to Unicode using the naive algorithm, this results in:
+```tla
+---- MODULE Test ----
+op ≜ ∧ A
+     ∧ B
+      ⇒ C
+====
+```
+So this changes `(A ∧ B) ⇒ C` into `A ∧ (B ⇒ C)`, absolutely a different logical expression.
+The solution to this edge case is to look for infix operator nodes that are the parent of jlist nodes, and record the operator symbol column offset relative to the jlist column.
+This offset must be maintained as the jlist is shifted, potentially triggering further recursive shifts.
+The edge case is also present in the other direction when converting from Unicode to ASCII.
+Somewhat humorously, this edge case was also seen to manifest when it "corrected" a seemingly-mistakenly-misaligned jlist, as in:
+```tla
+op == /\ A
+    /\ B
+    /\ C
+```
+Although the parse tree differed, the resulting expression was logically equivalent.

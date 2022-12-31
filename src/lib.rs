@@ -597,4 +597,28 @@ op == /\ A
 ===="#,
         );
     }
+
+    #[ignore]
+    #[test]
+    fn test_infix_op_edge_case() {
+        run_roundtrip_test(
+            r#"---- MODULE Test ----
+op == /\ A
+      /\ B
+      => C
+===="#,
+        );
+    }
+
+    #[ignore]
+    #[test]
+    fn test_misaligned_jlist_edge_case() {
+        run_roundtrip_test(
+            r#"---- MODULE Test ----
+op == /\ A
+     /\ B
+     /\ C
+===="#,
+        );
+    }
 }
