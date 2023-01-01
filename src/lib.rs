@@ -28,7 +28,7 @@ pub fn rewrite(input: &str, mode: &Mode, force: bool) -> Result<String, TlaError
         .set_language(tree_sitter_tlaplus::language())
         .expect("Error loading TLA⁺ grammar");
     let mut cursor = QueryCursor::new();
-    //
+
     // Parse input TLA⁺ file and construct data structures to hold information about it
     let input_tree = parser.parse(input, None).unwrap();
     if !force && input_tree.root_node().has_error() {
@@ -270,7 +270,7 @@ impl JList {
     fn terminating_infix_op_query() -> Query {
         Query::new(
             tree_sitter_tlaplus::language(),
-            "bound_infix_op lhs: [(conj_list) (disj_list)]) @capture"
+            "bound_infix_op lhs: [(conj_list) (disj_list)]) @capture",
         )
         .unwrap()
     }
@@ -307,13 +307,25 @@ fn mark_jlists(tree: &Tree, query_cursor: &mut QueryCursor, tla_lines: &mut [Tla
         line.jlists.push(jlist);
     }
 
-    for capture in query_cursor.matches(&JList::terminating_infix_op_query(), tree.root_node(), "".as_bytes()) {
+    for capture in query_cursor.matches(
+        &JList::terminating_infix_op_query(),
+        tree.root_node(),
+        "".as_bytes(),
+    ) {
         let infix_op_node = capture.captures[0].node;
         let start_line = infix_op_node.start_position().row;
         let line = &mut tla_lines[start_line];
         let jlist_node = infix_op_node.child_by_field_name("lhs").unwrap();
-        let char_column = CharQuantity(line.text[..jlist_node.start_position().column].chars().count());
-        let jlist = &mut line.jlists.iter().find(|j| j.char_column == char_column).unwrap();
+        let char_column = CharQuantity(
+            line.text[..jlist_node.start_position().column]
+                .chars()
+                .count(),
+        );
+        let jlist = &mut line
+            .jlists
+            .iter()
+            .find(|j| j.char_column == char_column)
+            .unwrap();
         let symbol_node = infix_op_node.child_by_field_name("symbol").unwrap();
         let row_offset = symbol_node.start_position().row - start_line;
     }
