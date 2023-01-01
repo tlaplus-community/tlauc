@@ -70,6 +70,12 @@ impl CharDiff {
     }
 }
 
+impl ByteDiff {
+    pub fn magnitude(&self) -> ByteQuantity {
+        ByteQuantity(i8::abs(self.0) as usize)
+    }
+}
+
 impl Add<CharDiff> for CharQuantity {
     type Output = Self;
 

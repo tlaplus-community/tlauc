@@ -378,7 +378,7 @@ fn replace_symbols(tla_lines: &mut [TlaLine]) {
                 &symbol.target,
             );
             line.shift(&symbol.diff, &symbol_start_index);
-            fix_alignment(line, suffix, symbol.diff.char, symbol_start_index.char);
+            fix_alignment(line, suffix, &symbol.diff, &symbol_start_index);
         }
     }
 }
@@ -386,14 +386,14 @@ fn replace_symbols(tla_lines: &mut [TlaLine]) {
 fn fix_alignment(
     line: &TlaLine,
     suffix: &mut [TlaLine],
-    char_diff: CharDiff,
-    symbol_start_char_index: CharQuantity,
+    diff: &StrElementDiff,
+    symbol_start_index: &StrElementQuantity,
 ) {
-    if char_diff == CharDiff(0) {
+    if diff.char == CharDiff(0) {
         return;
     }
     for jlist in &line.jlists {
-        if jlist.char_column <= symbol_start_char_index {
+        if jlist.char_column <= symbol_start_index.char {
             continue;
         }
         for &offset in &jlist.bullet_line_offsets {
@@ -404,29 +404,27 @@ fn fix_alignment(
             let bullet_line = &mut suffix_prefix[offset - 1];
 
             // Add or remove spaces from the start of the line
-            if char_diff < CharDiff(0) {
-                let spaces_to_remove = char_diff.magnitude();
+            let mod_index = StrElementQuantity { char: CharQuantity(0), byte: ByteQuantity(0) };
+            if diff.char < CharDiff(0) {
+                let spaces_to_remove = diff.char.magnitude();
                 let bytes_to_remove = ByteQuantity::from_char_index(&spaces_to_remove, &bullet_line.text);
-                let removal_index = StrElementQuantity { char: CharQuantity(0), byte: ByteQuantity(0) };
                 bullet_line.text.drain(bytes_to_remove.range_to());
                 bullet_line.shift(
-                    &StrElementDiff { char: char_diff, byte: removal_index.byte - bytes_to_remove },
-                    &removal_index
+                    &StrElementDiff { char: diff.char, byte: mod_index.byte - bytes_to_remove },
+                    &mod_index
                 );
             } else {
-                let spaces_to_add = char_diff.magnitude();
-                let insertion_index = 0;
-                bullet_line.text.insert_str(insertion_index, &spaces_to_add.repeat(" "));
+                let spaces_to_add = diff.char.magnitude();
+                bullet_line.text.insert_str(0, &spaces_to_add.repeat(" "));
                 let spaces_added_in_bytes = ByteQuantity::from_char_index(&spaces_to_add, &bullet_line.text);
-                let insertion_index = StrElementQuantity { char: CharQuantity(insertion_index), byte: ByteQuantity(insertion_index) };
                 bullet_line.shift(
-                    &StrElementDiff { char: char_diff, byte: spaces_added_in_bytes - insertion_index.byte },
-                    &insertion_index,
+                    &StrElementDiff { char: diff.char, byte: spaces_added_in_bytes - mod_index.byte },
+                    &mod_index,
                 );
             }
 
             // Recursively fix alignment of any jlists starting on this line
-            fix_alignment(bullet_line, suffix_suffix, char_diff, CharQuantity(0));
+            fix_alignment(bullet_line, suffix_suffix, &diff, &mod_index);
         }
     }
 }
