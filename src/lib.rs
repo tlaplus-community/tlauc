@@ -1,5 +1,5 @@
-mod strquantity;
-use crate::strquantity::{ByteQuantity, CharQuantity};
+mod strmeasure;
+use crate::strmeasure::{StrElementQuantity, StrElementDiff, ByteQuantity, CharQuantity, ByteDiff, CharDiff};
 
 use serde::{Deserialize, Deserializer};
 use std::ops::Range;
@@ -13,7 +13,10 @@ pub enum Mode {
 #[derive(Debug)]
 pub enum TlaError {
     InputFileParseError(Tree),
-    OutputFileParseError(Tree),
+    OutputFileParseError {
+        output_tree: Tree,
+        output: String,
+    },
     InvalidTranslationError {
         input_tree: Tree,
         output_tree: Tree,
@@ -40,6 +43,7 @@ pub fn rewrite(input: &str, mode: &Mode, force: bool) -> Result<String, TlaError
     // Identify & replace symbols
     mark_jlists(&input_tree, &mut cursor, &mut tla_lines);
     mark_symbols(&input_tree, &mut cursor, &mut tla_lines, &mode);
+    //println!("{:#?}", tla_lines);
     replace_symbols(&mut tla_lines);
 
     // Ensure output parse tree is identical to input parse tree
@@ -51,7 +55,7 @@ pub fn rewrite(input: &str, mode: &Mode, force: bool) -> Result<String, TlaError
     let output_tree = parser.parse(&output, None).unwrap();
     if !force {
         if output_tree.root_node().has_error() {
-            return Err(TlaError::OutputFileParseError(output_tree));
+            return Err(TlaError::OutputFileParseError {output_tree, output});
         }
         if let Err(first_diff) = compare_parse_trees(&input_tree, &output_tree) {
             return Err(TlaError::InvalidTranslationError {
@@ -176,15 +180,17 @@ impl SymbolMapping {
         }
     }
 
-    fn chars_added(&self, mode: &Mode, src_symbol: &str) -> CharQuantity<i8> {
+    fn chars_added(&self, mode: &Mode, src_symbol: &str) -> CharDiff {
         match mode {
-            Mode::AsciiToUnicode => CharQuantity(
-                (self.unicode.chars().count() as i8) - (src_symbol.chars().count() as i8),
-            ),
-            Mode::UnicodeToAscii => CharQuantity(
-                (self.canonical_ascii().chars().count() as i8)
-                    - (self.unicode.chars().count() as i8),
-            ),
+            Mode::AsciiToUnicode => CharQuantity(self.unicode.chars().count()) - CharQuantity(src_symbol.chars().count()),
+            Mode::UnicodeToAscii => CharQuantity(self.canonical_ascii().chars().count()) - CharQuantity(self.unicode.chars().count()),
+        }
+    }
+
+    fn bytes_added(&self, mode: &Mode, src_symbol: &str) -> ByteDiff {
+        match mode {
+            Mode::AsciiToUnicode => ByteQuantity(self.unicode.len()) - ByteQuantity(src_symbol.len()),
+            Mode::UnicodeToAscii => ByteQuantity(self.canonical_ascii().len()) - ByteQuantity(self.unicode.len()),
         }
     }
 }
@@ -224,21 +230,19 @@ impl TlaLine {
 
     fn shift(
         &mut self,
-        char_diff: CharQuantity<i8>,
-        char_diff_start_index: CharQuantity<usize>,
-        byte_diff: ByteQuantity<i8>,
-        byte_diff_start_index: ByteQuantity<usize>,
+        diff: &StrElementDiff,
+        start_index: &StrElementQuantity
     ) {
         for jlist in &mut self.jlists {
-            if jlist.char_column > char_diff_start_index {
-                jlist.char_column = jlist.char_column + char_diff;
+            if jlist.char_column > start_index.char {
+                jlist.char_column = jlist.char_column + diff.char;
             }
         }
 
         for symbol in &mut self.symbols {
-            if symbol.src_byte_range.start > byte_diff_start_index {
-                symbol.src_byte_range = (symbol.src_byte_range.start + byte_diff)
-                    ..(symbol.src_byte_range.end + byte_diff);
+            if symbol.src_byte_range.start > start_index.byte {
+                symbol.src_byte_range = (symbol.src_byte_range.start + diff.byte)
+                    ..(symbol.src_byte_range.end + diff.byte);
             }
         }
     }
@@ -246,7 +250,7 @@ impl TlaLine {
 
 #[derive(Debug)]
 struct JList {
-    char_column: CharQuantity<usize>,
+    char_column: CharQuantity,
     bullet_line_offsets: Vec<usize>,
     terminating_infix_op_offset: Option<Offset>,
 }
@@ -254,8 +258,7 @@ struct JList {
 #[derive(Debug)]
 struct Offset {
     row: usize,
-    column_char: CharQuantity<i8>,
-    column_byte: ByteQuantity<i8>,
+    column: StrElementDiff,
 }
 
 impl JList {
@@ -270,7 +273,7 @@ impl JList {
     fn terminating_infix_op_query() -> Query {
         Query::new(
             tree_sitter_tlaplus::language(),
-            "bound_infix_op lhs: [(conj_list) (disj_list)]) @capture",
+            "(bound_infix_op lhs: [(conj_list) (disj_list)]) @capture",
         )
         .unwrap()
     }
@@ -286,7 +289,7 @@ fn mark_jlists(tree: &Tree, query_cursor: &mut QueryCursor, tla_lines: &mut [Tla
         let node = capture.captures[0].node;
         let start_line = node.start_position().row;
         let line = &mut tla_lines[start_line];
-        let char_column = CharQuantity(line.text[..node.start_position().column].chars().count());
+        let char_column = CharQuantity::from_byte_index(&ByteQuantity(node.start_position().column), &line.text);
         let mut jlist = JList {
             char_column,
             bullet_line_offsets: Vec::new(),
@@ -316,11 +319,7 @@ fn mark_jlists(tree: &Tree, query_cursor: &mut QueryCursor, tla_lines: &mut [Tla
         let start_line = infix_op_node.start_position().row;
         let line = &mut tla_lines[start_line];
         let jlist_node = infix_op_node.child_by_field_name("lhs").unwrap();
-        let char_column = CharQuantity(
-            line.text[..jlist_node.start_position().column]
-                .chars()
-                .count(),
-        );
+        let char_column = CharQuantity::from_byte_index(&ByteQuantity(jlist_node.start_position().column), &line.text);
         let jlist = &mut line
             .jlists
             .iter()
@@ -333,35 +332,9 @@ fn mark_jlists(tree: &Tree, query_cursor: &mut QueryCursor, tla_lines: &mut [Tla
 
 #[derive(Debug)]
 struct Symbol {
-    char_diff: CharQuantity<i8>,
-    byte_diff: ByteQuantity<i8>,
-    src_byte_range: Range<ByteQuantity<usize>>,
+    diff: StrElementDiff,
+    src_byte_range: Range<ByteQuantity>,
     target: String,
-}
-
-fn replace_symbols(tla_lines: &mut [TlaLine]) {
-    for line_number in 0..tla_lines.len() - 1 {
-        let (prefix, suffix) = tla_lines.split_at_mut(line_number + 1);
-        let line = &mut prefix[line_number];
-        while let Some(symbol) = line.symbols.pop() {
-            let symbol_start_char_index = CharQuantity(
-                line.text[ByteQuantity::<usize>::as_range_to(&symbol.src_byte_range.start)]
-                    .chars()
-                    .count(),
-            );
-            line.text.replace_range(
-                ByteQuantity::as_range(&symbol.src_byte_range),
-                &symbol.target,
-            );
-            line.shift(
-                symbol.char_diff,
-                symbol_start_char_index,
-                symbol.byte_diff,
-                symbol.src_byte_range.start,
-            );
-            fix_alignment(line, suffix, symbol.char_diff, symbol_start_char_index);
-        }
-    }
 }
 
 fn mark_symbols(tree: &Tree, cursor: &mut QueryCursor, tla_lines: &mut [TlaLine], mode: &Mode) {
@@ -384,22 +357,39 @@ fn mark_symbols(tree: &Tree, cursor: &mut QueryCursor, tla_lines: &mut [TlaLine]
         let src_symbol = &line.text[ByteQuantity::as_range(&src_byte_range)];
         let target = mapping.target_symbol(mode).to_string();
         line.symbols.push(Symbol {
-            char_diff: mapping.chars_added(mode, src_symbol),
-            byte_diff: ByteQuantity::<i8>::from(src_byte_range.end - src_byte_range.start)
-                - ByteQuantity(target.len() as i8),
+            diff: StrElementDiff {
+                char: mapping.chars_added(mode, src_symbol),
+                byte: mapping.bytes_added(mode, src_symbol),
+            },
             src_byte_range,
             target,
         });
     }
 }
 
+fn replace_symbols(tla_lines: &mut [TlaLine]) {
+    for line_number in 0..tla_lines.len() - 1 {
+        let (prefix, suffix) = tla_lines.split_at_mut(line_number + 1);
+        let line = &mut prefix[line_number];
+        while let Some(symbol) = line.symbols.pop() {
+            let symbol_start_index = StrElementQuantity::from_byte_index(&symbol.src_byte_range.start, &line.text);
+            line.text.replace_range(
+                ByteQuantity::as_range(&symbol.src_byte_range),
+                &symbol.target,
+            );
+            line.shift(&symbol.diff, &symbol_start_index);
+            fix_alignment(line, suffix, symbol.diff.char, symbol_start_index.char);
+        }
+    }
+}
+
 fn fix_alignment(
     line: &TlaLine,
     suffix: &mut [TlaLine],
-    char_diff: CharQuantity<i8>,
-    symbol_start_char_index: CharQuantity<usize>,
+    char_diff: CharDiff,
+    symbol_start_char_index: CharQuantity,
 ) {
-    if char_diff == CharQuantity(0) {
+    if char_diff == CharDiff(0) {
         return;
     }
     for jlist in &line.jlists {
@@ -414,19 +404,26 @@ fn fix_alignment(
             let bullet_line = &mut suffix_prefix[offset - 1];
 
             // Add or remove spaces from the start of the line
-            // Since we are inserting ASCII spaces, byte_diff is equal to char_diff
-            let byte_diff: ByteQuantity<i8> = char_diff.into();
-            if byte_diff < ByteQuantity(0) {
-                bullet_line
-                    .text
-                    .drain(ByteQuantity::<i8>::as_range_to(&(-byte_diff)));
+            if char_diff < CharDiff(0) {
+                let spaces_to_remove = char_diff.magnitude();
+                let bytes_to_remove = ByteQuantity::from_char_index(&spaces_to_remove, &bullet_line.text);
+                let removal_index = StrElementQuantity { char: CharQuantity(0), byte: ByteQuantity(0) };
+                bullet_line.text.drain(bytes_to_remove.range_to());
+                bullet_line.shift(
+                    &StrElementDiff { char: char_diff, byte: removal_index.byte - bytes_to_remove },
+                    &removal_index
+                );
             } else {
-                bullet_line
-                    .text
-                    .insert_str(0, " ".repeat(char_diff.value() as usize).as_ref());
+                let spaces_to_add = char_diff.magnitude();
+                let insertion_index = 0;
+                bullet_line.text.insert_str(insertion_index, &spaces_to_add.repeat(" "));
+                let spaces_added_in_bytes = ByteQuantity::from_char_index(&spaces_to_add, &bullet_line.text);
+                let insertion_index = StrElementQuantity { char: CharQuantity(insertion_index), byte: ByteQuantity(insertion_index) };
+                bullet_line.shift(
+                    &StrElementDiff { char: char_diff, byte: spaces_added_in_bytes - insertion_index.byte },
+                    &insertion_index,
+                );
             }
-
-            bullet_line.shift(char_diff, CharQuantity(0), byte_diff, ByteQuantity(0));
 
             // Recursively fix alignment of any jlists starting on this line
             fix_alignment(bullet_line, suffix_suffix, char_diff, CharQuantity(0));
@@ -467,8 +464,8 @@ mod tests {
             Err(TlaError::InputFileParseError(tree)) => {
                 panic!("{}", tree.root_node().to_sexp())
             }
-            Err(TlaError::OutputFileParseError(tree)) => {
-                panic!("{}", tree.root_node().to_sexp())
+            Err(TlaError::OutputFileParseError {output_tree, output}) => {
+                panic!("{}\n{}", output, output_tree.root_node().to_sexp())
             }
             Err(TlaError::InvalidTranslationError {
                 input_tree: _,

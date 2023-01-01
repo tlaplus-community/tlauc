@@ -49,7 +49,7 @@ mod corpus_tests {
                 Err(TlaError::InputFileParseError(_)) => {
                     panic!("Failed to parse input file [{:?}]", path)
                 }
-                Err(TlaError::OutputFileParseError(_)) => {
+                Err(TlaError::OutputFileParseError{..}) => {
                     panic!("Failed to parse output file [{:?}]", path)
                 }
                 Err(TlaError::InvalidTranslationError {
