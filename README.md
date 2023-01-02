@@ -3,11 +3,15 @@
 
 ## Overview
 
-This crate will take any ASCII TLA⁺ file and convert all its symbols to their Unicode equivalent, or take any Unicode TLA⁺ file and convert all its symbols to their ASCII equivalent.
+This package will take any ASCII TLA⁺ file and convert all its symbols to their Unicode equivalent, or take any Unicode TLA⁺ file and convert all its symbols to their ASCII equivalent.
+It consists of two crates: a library exposing this functionality (using [tree-sitter-tlaplus](https://github.com/tlaplus-community/tree-sitter-tlaplus) under the hood), and a command line wrapper.
+
+Use this tool to:
+* Create a nice-looking "good copy" of your spec that is pleasant to read but can still be edited and checked into source control
+* Write specs in Unicode with the [tlaplus-nvim-plugin](https://github.com/tlaplus-community/tlaplus-nvim-plugin) then convert them into ASCII for use with SANY and TLC.
+
 The symbol mapping can be found in the [`./resources/tla-unicode.csv`](./resources/tla-unicode.csv) file, taken from the [tlaplus-standard](https://github.com/tlaplus-community/tlaplus-standard) repo.
 The crate also provides programmatic access to these mappings.
-
-You can use this crate to, for example, write TLA⁺ Unicode specs with the [tlaplus-nvim-plugin](https://github.com/tlaplus-community/tlaplus-nvim-plugin) then convert them into ASCII for use with SANY and TLC.
 
 ## Use
 
@@ -180,16 +184,28 @@ op ≜ ∧ A
       ⇒ C
 ```
 So this changes `(A ∧ B) ⇒ C` into `A ∧ (B ⇒ C)`, absolutely a different logical expression.
-The solution to this edge case is to look for infix operator nodes that are the parent of jlist nodes where the jlist is the left-hand expression, and record the operator symbol column offset relative to the jlist column.
-This offset must be maintained as the jlist is shifted, potentially triggering further recursive shifts.
-The edge case is also present in the other direction when converting from Unicode to ASCII.
-Somewhat humorously, this edge case was also seen to manifest when it "corrected" a seemingly-mistakenly-misaligned jlist, as in:
+The solution to this edge case is to look for infix operator nodes that are the parent of jlist nodes where the jlist is the left-hand expression.
+Thankfully this is easily done with the tree-sitter query `(bound_infix_op lhs: [(conj_list) (disj_list)]) @capture`.
+Then, record the operator symbol column offset relative to the jlist column, and maintain it as much as possible as the jlist is shifted.
+The edge case is also present in the other direction when converting from Unicode to ASCII:
+```tla
+op ≜ ∧ A
+     ∧ B
+      = C
+     ∧ D
+      = E
+```
+Which converts to:
 ```tla
 op == /\ A
-     /\ B
-     /\ C
+      /\ B
+      = C
+      /\ D
+      = E
 ```
-Although the parse tree differed, the resulting expression was logically equivalent.
+So `(A ∧ (B = C)) ∧ (D = E)` is changed to `((A ∧ B) = C) ∧ D) = E`.
+This direction is substantially more difficult to detect via tree-sitter queries, since `B ∧ C` can be an arbitrarily-long and complicated expression that eventually spills onto additional lines.
+Since this scenario is very unlikely to occur in the wild until large numbers of TLA⁺ specs are being written in Unicode first, this case is not currently handled by the program (see issue https://github.com/tlaplus-community/tlauc/issues/1).
 
 Another edge case involves block comments in the (usually empty) space before jlist items:
 ```tla
@@ -197,7 +213,6 @@ op == /\ A
 (***) /\ B
 (***) /\ C
 ```
-This has not been observed in the wild, but is certainly valid syntax so should be handled.
 If one or more comments are present in this way they function as hard constraints on how much the jlist can be shifted to the left.
 This turns jlist shifting from a simple greedy algorithm into more of a constraint satisfaction problem, especially once nested jlists are involved or even combined with the infix operator edge case up above, forming a tricky corner case:
 ```tla
@@ -208,5 +223,7 @@ op == /\ A
 ```
 Note also that comments can include arbitrary Unicode symbols so care must be taken to use character indices instead of byte indices for column alignment (see discussion of Unicode difficulties above).
 Of course this means the jlists will not be aligned in non-Unicode-aware tooling, but that is the concern of the user; this tool does not modify comment text.
-At this time it also assumes one codepoint = one displayed character; alignment according to grapheme clusters is not supported.
+It really only seems feasible to assume one codepoint = one displayed character; alignment according to grapheme clusters would add unnecessary complication to a very niche use case.
+
+The block comment edge case has not been observed in the wild and so is not yet supported; see https://github.com/tlaplus-community/tlauc/issues/2.
 
