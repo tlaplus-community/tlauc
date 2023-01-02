@@ -15,22 +15,16 @@ impl StrElementQuantity {
     }
 }
 
-#[derive(Debug)]
-pub struct StrElementDiff {
-    pub char: CharDiff,
-    pub byte: ByteDiff,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct CharQuantity(pub usize);
 
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct ByteQuantity(pub usize);
 
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct CharDiff(pub i8);
 
-#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct ByteDiff(pub i8);
 
 impl CharQuantity {
@@ -90,6 +84,14 @@ impl Add<ByteDiff> for ByteQuantity {
     }
 }
 
+impl Add<CharDiff> for CharDiff {
+    type Output = Self;
+
+    fn add(self, other: CharDiff) -> Self::Output {
+        CharDiff(self.0 + other.0)
+    }
+}
+
 impl Sub<CharQuantity> for CharQuantity {
     type Output = CharDiff;
 
@@ -98,11 +100,35 @@ impl Sub<CharQuantity> for CharQuantity {
     }
 }
 
+impl Sub<CharDiff> for CharQuantity {
+    type Output = Self;
+
+    fn sub(self, other: CharDiff) -> Self::Output {
+        self + -other
+    }
+}
+
 impl Sub<ByteQuantity> for ByteQuantity {
     type Output = ByteDiff;
 
     fn sub(self, other: ByteQuantity) -> Self::Output {
         ByteDiff((self.0 as i32 - other.0 as i32) as i8)
+    }
+}
+
+impl Sub<CharDiff> for CharDiff {
+    type Output = Self;
+
+    fn sub(self, other: CharDiff) -> Self::Output {
+        CharDiff(self.0 + -other.0)
+    }
+}
+
+impl Neg for CharDiff {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        CharDiff(-self.0)
     }
 }
 

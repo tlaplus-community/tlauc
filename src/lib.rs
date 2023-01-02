@@ -1,5 +1,5 @@
 mod strmeasure;
-use crate::strmeasure::{StrElementQuantity, StrElementDiff, ByteQuantity, CharQuantity, ByteDiff, CharDiff};
+use crate::strmeasure::{StrElementQuantity, ByteQuantity, CharQuantity, ByteDiff, CharDiff};
 
 use serde::{Deserialize, Deserializer};
 use std::ops::Range;
@@ -186,13 +186,6 @@ impl SymbolMapping {
             Mode::UnicodeToAscii => CharQuantity(self.canonical_ascii().chars().count()) - CharQuantity(self.unicode.chars().count()),
         }
     }
-
-    fn bytes_added(&self, mode: &Mode, src_symbol: &str) -> ByteDiff {
-        match mode {
-            Mode::AsciiToUnicode => ByteQuantity(self.unicode.len()) - ByteQuantity(src_symbol.len()),
-            Mode::UnicodeToAscii => ByteQuantity(self.canonical_ascii().len()) - ByteQuantity(self.unicode.len()),
-        }
-    }
 }
 
 fn vec_from_semicolon_separated_str<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
@@ -230,25 +223,29 @@ impl TlaLine {
 
     fn shift_jlists(
         &mut self,
-        diff: &StrElementDiff,
+        &diff: &CharDiff,
         start_index: &StrElementQuantity
     ) {
         for jlist in &mut self.jlists {
             if jlist.column > start_index.char {
-                jlist.column = jlist.column + diff.char;
+                jlist.column = jlist.column + diff;
+
+                if let Some(offset) = &mut jlist.terminating_infix_op_offset {
+                    offset.column = offset.column - diff;
+                }
             }
         }
     }
 
     fn shift_symbols(
         &mut self,
-        diff: &StrElementDiff,
+        &diff: &ByteDiff,
         start_index: &StrElementQuantity
     ) {
         for symbol in &mut self.symbols {
-            if symbol.src_byte_range.start > start_index.byte {
-                symbol.src_byte_range = (symbol.src_byte_range.start + diff.byte)
-                    ..(symbol.src_byte_range.end + diff.byte);
+            if symbol.src_byte_range.start >= start_index.byte {
+                symbol.src_byte_range = (symbol.src_byte_range.start + diff)
+                    ..(symbol.src_byte_range.end + diff);
             }
         }
     }
@@ -341,7 +338,7 @@ fn mark_jlists(tree: &Tree, query_cursor: &mut QueryCursor, tla_lines: &mut [Tla
 
 #[derive(Debug)]
 struct Symbol {
-    diff: StrElementDiff,
+    diff: CharDiff,
     src_byte_range: Range<ByteQuantity>,
     target: String,
 }
@@ -366,10 +363,7 @@ fn mark_symbols(tree: &Tree, cursor: &mut QueryCursor, tla_lines: &mut [TlaLine]
         let src_symbol = &line.text[ByteQuantity::as_range(&src_byte_range)];
         let target = mapping.target_symbol(mode).to_string();
         line.symbols.push(Symbol {
-            diff: StrElementDiff {
-                char: mapping.chars_added(mode, src_symbol),
-                byte: mapping.bytes_added(mode, src_symbol),
-            },
+            diff: mapping.chars_added(mode, src_symbol),
             src_byte_range,
             target,
         });
@@ -393,23 +387,24 @@ fn replace_symbols(tla_lines: &mut [TlaLine]) {
 }
 
 fn fix_alignment(
-    line: &TlaLine,
+    line: &mut TlaLine,
     suffix: &mut [TlaLine],
-    diff: &StrElementDiff,
+    &diff: &CharDiff,
     symbol_start_index: &StrElementQuantity,
 ) {
-    if diff.char == CharDiff(0) {
+    // If there was no net change in character count, there is no need to fix alignment
+    if diff == CharDiff(0) {
         return;
     }
 
     // Recursively fix alignment of all jlist bullets
-    for jlist in &line.jlists {
-        // Ignore jlists starting before the index of modification
+    for jlist in &mut line.jlists {
+        // Ignore jlists starting before the index of modification in this line
         if jlist.column <= symbol_start_index.char {
             continue;
         }
 
-        // Add or remove spaces from the start of the line
+        // Add or remove spaces from the start of the line for each bullet in this jlist
         let mod_index = StrElementQuantity { char: CharQuantity(0), byte: ByteQuantity(0) };
         for &line_offset in &jlist.bullet_line_offsets {
             // Alignment of first element of jlist was already changed by original modification
@@ -419,43 +414,54 @@ fn fix_alignment(
 
             let (suffix_prefix, suffix_suffix) = suffix.split_at_mut(line_offset);
             let bullet_line = &mut suffix_prefix[line_offset - 1];
-            pad(bullet_line, &diff, &mod_index);
+            let bullet_column = jlist.column - diff;
+            pad(bullet_line, &diff, &mod_index, &bullet_column);
 
             // Recursively fix alignment of any jlists starting on this line
             fix_alignment(bullet_line, suffix_suffix, &diff, &mod_index);
         }
 
         // Fix alignment of terminating infix op for this jlist, if it exists
-        if let Some(infix_op_offset) = &jlist.terminating_infix_op_offset {
+        if let Some(infix_op_offset) = &mut jlist.terminating_infix_op_offset {
             let (suffix_prefix, suffix_suffix) = suffix.split_at_mut(infix_op_offset.row);
             let infix_op_line = &mut suffix_prefix[infix_op_offset.row - 1];
-            pad(infix_op_line, &diff, &mod_index);
 
-            // Recursively fix alignment of any jlists starting on this line
+            // Currently the offset will never be positive so we don't need to handle that
+            // case; However, we have to worry about the operator hitting the beginning of
+            // the line after which it can no longer be adjusted left.
+            let op_column = jlist.column + infix_op_offset.column;
+            let diff = pad(infix_op_line, &diff, &mod_index, &op_column);
             fix_alignment(infix_op_line, suffix_suffix, &diff, &mod_index);
+            let new_op_column = op_column + diff;
+            infix_op_offset.column = jlist.column - new_op_column;
         }
     }
 }
 
 fn pad(
     line: &mut TlaLine,
-    diff: &StrElementDiff,
+    &diff: &CharDiff,
     mod_index: &StrElementQuantity,
-) {
-    if diff.char < CharDiff(0) {
-        let spaces_to_remove = diff.char.magnitude();
+    &first_symbol_index: &CharQuantity,
+) -> CharDiff {
+    if diff < CharDiff(0) {
+        // Calculate min to ensure we don't move a symbol to before the end of the line
+        let spaces_to_remove = CharQuantity::min(diff.magnitude(), first_symbol_index);
         let bytes_to_remove = ByteQuantity::from_char_index(&spaces_to_remove, &line.text);
         line.text.drain(bytes_to_remove.range_to());
-        let pad_diff = StrElementDiff { char: diff.char, byte: mod_index.byte - bytes_to_remove };
-        line.shift_jlists(&pad_diff, &mod_index);
+        let char_diff = mod_index.char - spaces_to_remove;
+        let pad_diff = mod_index.byte - bytes_to_remove;
+        line.shift_jlists(&char_diff, &mod_index);
         line.shift_symbols(&pad_diff, &mod_index);
+        char_diff
     } else {
-        let spaces_to_add = diff.char.magnitude();
+        let spaces_to_add = diff.magnitude();
         line.text.insert_str(0, &spaces_to_add.repeat(" "));
         let spaces_added_in_bytes = ByteQuantity::from_char_index(&spaces_to_add, &line.text);
-        let pad_diff = StrElementDiff { char: diff.char, byte: spaces_added_in_bytes - mod_index.byte };
-        line.shift_jlists(&pad_diff, &mod_index);
+        let pad_diff = spaces_added_in_bytes - mod_index.byte;
+        line.shift_jlists(&diff, &mod_index);
         line.shift_symbols(&pad_diff, &mod_index);
+        diff
     }
 }
 
@@ -510,7 +516,7 @@ mod tests {
         let intermediate = unwrap_conversion(rewrite(expected, &Mode::AsciiToUnicode, false));
         check_ascii_replaced(&intermediate);
         let actual = unwrap_conversion(rewrite(&intermediate, &Mode::UnicodeToAscii, false));
-        assert_eq!(expected, actual);
+        assert_eq!(expected, actual, "\nExpected:\n{}\nActual:\n{}", expected, actual);
     }
 
     #[test]
@@ -677,13 +683,15 @@ op == /\ A
 
     #[test]
     fn test_trailing_infix_op_at_line_start() {
-        run_roundtrip_test(r#"
+        let expected = r#"
 ---- MODULE Test ----
 op == /\ A
       /\ B
 => C
-===="#,
-        );
+===="#;
+        let intermediate = unwrap_conversion(rewrite(expected, &Mode::AsciiToUnicode, false));
+        check_ascii_replaced(&intermediate);
+        unwrap_conversion(rewrite(&intermediate, &Mode::UnicodeToAscii, false));
     }
 
     #[test]

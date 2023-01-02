@@ -7,8 +7,12 @@ This package will take any ASCII TLA⁺ file and convert all its symbols to thei
 It consists of two crates: a library exposing this functionality (using [tree-sitter-tlaplus](https://github.com/tlaplus-community/tree-sitter-tlaplus) under the hood), and a command line wrapper.
 
 Use this tool to:
-* Create a nice-looking "good copy" of your spec that is pleasant to read but can still be edited and checked into source control
-* Write specs in Unicode with the [tlaplus-nvim-plugin](https://github.com/tlaplus-community/tlaplus-nvim-plugin) then convert them into ASCII for use with SANY and TLC.
+* Create a nice-looking good copy of your spec that is pleasant to read but can still be edited and meaningfully tracked by source control
+* Write specs in Unicode with the [tlaplus-nvim-plugin](https://github.com/tlaplus-community/tlaplus-nvim-plugin) then convert them into ASCII for use with SANY and TLC
+* Convert your existing ASCII specs to Unicode and use them with Unicode-aware tooling like [tla-web](https://github.com/will62794/tla-web)
+
+Note that GitHub itself uses the tree-sitter-tlaplus grammar for highlighting, so it supports Unicode TLA⁺ as shown in the highlighted code snippets below.
+If you run non-Unicode-aware tooling like TLC during your CI process you can add a step that uses this tool to translate your Unicode spec into TLC-supported form.
 
 The symbol mapping can be found in the [`./resources/tla-unicode.csv`](./resources/tla-unicode.csv) file, taken from the [tlaplus-standard](https://github.com/tlaplus-community/tlaplus-standard) repo.
 The crate also provides programmatic access to these mappings.
@@ -226,4 +230,8 @@ Of course this means the jlists will not be aligned in non-Unicode-aware tooling
 It really only seems feasible to assume one codepoint = one displayed character; alignment according to grapheme clusters would add unnecessary complication to a very niche use case.
 
 The block comment edge case has not been observed in the wild and so is not yet supported; see https://github.com/tlaplus-community/tlauc/issues/2.
+
+## Prior Art
+
+Ron Pressler did some work ([link](https://github.com/pron/tlaplus/tree/unicode-presentation-2/tlatools/src/tla2unicode)) in early 2017 trying to add Unicode support to SANY, which faced many of the same challenges around jlist alignment.
 

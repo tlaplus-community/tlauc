@@ -16,13 +16,6 @@ mod corpus_tests {
             "Reals.tla",
             "Naturals.tla",
             "SimpleRegular.tla",
-            // Remove once infix operator edge case is fixed
-            "Bakery.tla",
-            "Boulanger.tla",
-            "LevelSpec.tla",
-            "Paxos.tla",
-            "Synod.tla",
-            "WellFoundedInduction.tla",
         ];
         println!("SKIPPING {:?}", skip);
         let skip: Vec<&OsStr> = skip.iter().map(|s| OsStr::new(s)).collect();
