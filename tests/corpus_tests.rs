@@ -14,7 +14,7 @@ mod corpus_tests {
             Err(TlaError::InputFileParseError(_)) => {
                 panic!("Failed to parse input file [{:?}]", path)
             }
-            Err(TlaError::OutputFileParseError{..}) => {
+            Err(TlaError::OutputFileParseError { .. }) => {
                 panic!("Failed to parse output file [{:?}]", path)
             }
             Err(TlaError::InvalidTranslationError {
@@ -58,7 +58,8 @@ mod corpus_tests {
                     .expect(&format!("Failed to read input file [{:?}]", path));
             }
 
-            let intermediate = unwrap_conversion(rewrite(&input, &Mode::AsciiToUnicode, false), path);
+            let intermediate =
+                unwrap_conversion(rewrite(&input, &Mode::AsciiToUnicode, false), path);
             unwrap_conversion(rewrite(&intermediate, &Mode::UnicodeToAscii, false), path);
         });
 

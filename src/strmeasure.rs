@@ -41,7 +41,7 @@ impl ByteQuantity {
     pub fn from_char_index(char_index: &CharQuantity, text: &str) -> Self {
         match text.char_indices().nth(char_index.0) {
             Some((byte_index, _)) => ByteQuantity(byte_index),
-            None => panic!("Cannot get character {} in string {}", char_index.0, text)
+            None => panic!("Cannot get character {} in string {}", char_index.0, text),
         }
     }
 
@@ -69,7 +69,12 @@ impl Add<CharDiff> for CharQuantity {
 
     fn add(self, offset: CharDiff) -> Self::Output {
         let result = self.0 as i32 + offset.0 as i32;
-        assert!(result >= 0, "Adding char offset to char index results in negative value: {} {}", self.0, offset.0);
+        assert!(
+            result >= 0,
+            "Adding char offset to char index results in negative value: {} {}",
+            self.0,
+            offset.0
+        );
         CharQuantity(result as usize)
     }
 }
@@ -79,7 +84,12 @@ impl Add<ByteDiff> for ByteQuantity {
 
     fn add(self, offset: ByteDiff) -> Self::Output {
         let result = self.0 as i32 + offset.0 as i32;
-        assert!(result >= 0, "Adding byte offset to byte index results in negative value: {} {}", self.0, offset.0);
+        assert!(
+            result >= 0,
+            "Adding byte offset to byte index results in negative value: {} {}",
+            self.0,
+            offset.0
+        );
         ByteQuantity(result as usize)
     }
 }
@@ -139,4 +149,3 @@ impl Neg for ByteDiff {
         ByteDiff(-self.0)
     }
 }
-
