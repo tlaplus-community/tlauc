@@ -3,11 +3,13 @@
 
 ## Overview
 
+Move beyond `\A`, `\E`, `[]`, and `<>` to `∀`, `∃`, `□` and `⋄`!
+
 This package will take any ASCII TLA⁺ file and convert all its symbols to their Unicode equivalent, or take any Unicode TLA⁺ file and convert all its symbols to their ASCII equivalent.
 It consists of two crates: a library exposing this functionality (using [tree-sitter-tlaplus](https://github.com/tlaplus-community/tree-sitter-tlaplus) under the hood), and a command line wrapper.
 
 Use this tool to:
-* Create a nice-looking good copy of your spec that is pleasant to read but can still be edited and meaningfully tracked by source control
+* Create a nice-looking copy of your spec that is pleasant to read but can still be edited and meaningfully tracked by source control
 * Write specs in Unicode with the [tlaplus-nvim-plugin](https://github.com/tlaplus-community/tlaplus-nvim-plugin) then convert them into ASCII for use with SANY and TLC
 * Convert your existing ASCII specs to Unicode and use them with Unicode-aware tooling like [tla-web](https://github.com/will62794/tla-web)
 
