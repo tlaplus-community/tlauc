@@ -8,6 +8,27 @@ mod corpus_tests {
     use std::time::Instant;
     use tlauc::{rewrite, Mode, TlaError};
 
+    fn unwrap_conversion(input: Result<String, TlaError>, path: &PathBuf) -> String {
+        match input {
+            Ok(converted) => converted,
+            Err(TlaError::InputFileParseError(_)) => {
+                panic!("Failed to parse input file [{:?}]", path)
+            }
+            Err(TlaError::OutputFileParseError{..}) => {
+                panic!("Failed to parse output file [{:?}]", path)
+            }
+            Err(TlaError::InvalidTranslationError {
+                input_tree: _,
+                output_tree: _,
+                output: _,
+                first_diff,
+            }) => panic!(
+                "Input/output parse tree mismatch for [{:?}]: [{:?}]",
+                path, first_diff
+            ),
+        }
+    }
+
     #[test]
     fn roundtrip_all_example_specs() {
         let start = Instant::now();
@@ -37,24 +58,8 @@ mod corpus_tests {
                     .expect(&format!("Failed to read input file [{:?}]", path));
             }
 
-            match rewrite(&input, &Mode::AsciiToUnicode, false) {
-                Ok(_) => (),
-                Err(TlaError::InputFileParseError(_)) => {
-                    panic!("Failed to parse input file [{:?}]", path)
-                }
-                Err(TlaError::OutputFileParseError{..}) => {
-                    panic!("Failed to parse output file [{:?}]", path)
-                }
-                Err(TlaError::InvalidTranslationError {
-                    input_tree: _,
-                    output_tree: _,
-                    output: _,
-                    first_diff,
-                }) => panic!(
-                    "Input/output parse tree mismatch for [{:?}]: [{:?}]",
-                    path, first_diff
-                ),
-            }
+            let intermediate = unwrap_conversion(rewrite(&input, &Mode::AsciiToUnicode, false), path);
+            unwrap_conversion(rewrite(&intermediate, &Mode::UnicodeToAscii, false), path);
         });
 
         println!("Corpus tests took {} seconds", start.elapsed().as_secs());
