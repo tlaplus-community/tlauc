@@ -73,7 +73,7 @@ fn convert(config: &Config, mode: Mode) -> Result<()> {
                     Ok(())
                 },
                 Err(TlaError::InputFileParseError(_)) => Err(anyhow!("Failed to correctly parse input TLA⁺ file; use --force flag to bypass this check.")),
-                Err(TlaError::OutputFileParseError(_)) => Err(anyhow!("Failed to correctly parse converted TLA⁺ output; this is a bug, please report it to the maintainer! Use --force to bypass this check (not recommended).")),
+                Err(TlaError::OutputFileParseError{..}) => Err(anyhow!("Failed to correctly parse converted TLA⁺ output; this is a bug, please report it to the maintainer! Use --force to bypass this check (not recommended).")),
                 Err(TlaError::InvalidTranslationError { input_tree: _, output_tree: _, output: _, first_diff }) => {
                     let err_msg = "Converted TLA⁺ parse tree differs from original; this is a bug, please report it to the maintainer! Use --force to bypass this check (not recommended).";
                     Err(anyhow!("{}\n{}", err_msg, first_diff))

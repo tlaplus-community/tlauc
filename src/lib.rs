@@ -1,5 +1,5 @@
-mod strquantity;
-use crate::strquantity::{ByteQuantity, CharQuantity};
+mod strmeasure;
+use crate::strmeasure::{ByteDiff, ByteQuantity, CharDiff, CharQuantity, StrElementQuantity};
 
 use serde::{Deserialize, Deserializer};
 use std::ops::Range;
@@ -13,7 +13,10 @@ pub enum Mode {
 #[derive(Debug)]
 pub enum TlaError {
     InputFileParseError(Tree),
-    OutputFileParseError(Tree),
+    OutputFileParseError {
+        output_tree: Tree,
+        output: String,
+    },
     InvalidTranslationError {
         input_tree: Tree,
         output_tree: Tree,
@@ -28,7 +31,7 @@ pub fn rewrite(input: &str, mode: &Mode, force: bool) -> Result<String, TlaError
         .set_language(tree_sitter_tlaplus::language())
         .expect("Error loading TLA⁺ grammar");
     let mut cursor = QueryCursor::new();
-    //
+
     // Parse input TLA⁺ file and construct data structures to hold information about it
     let input_tree = parser.parse(input, None).unwrap();
     if !force && input_tree.root_node().has_error() {
@@ -40,6 +43,7 @@ pub fn rewrite(input: &str, mode: &Mode, force: bool) -> Result<String, TlaError
     // Identify & replace symbols
     mark_jlists(&input_tree, &mut cursor, &mut tla_lines);
     mark_symbols(&input_tree, &mut cursor, &mut tla_lines, &mode);
+    //println!("{:#?}", tla_lines);
     replace_symbols(&mut tla_lines);
 
     // Ensure output parse tree is identical to input parse tree
@@ -51,7 +55,10 @@ pub fn rewrite(input: &str, mode: &Mode, force: bool) -> Result<String, TlaError
     let output_tree = parser.parse(&output, None).unwrap();
     if !force {
         if output_tree.root_node().has_error() {
-            return Err(TlaError::OutputFileParseError(output_tree));
+            return Err(TlaError::OutputFileParseError {
+                output_tree,
+                output,
+            });
         }
         if let Err(first_diff) = compare_parse_trees(&input_tree, &output_tree) {
             return Err(TlaError::InvalidTranslationError {
@@ -126,12 +133,6 @@ fn check_node_equality(
     Ok(())
 }
 
-pub fn get_unicode_mappings() -> Vec<SymbolMapping> {
-    let csv = include_str!("../resources/tla-unicode.csv");
-    let mut reader = csv::Reader::from_reader(csv.as_bytes());
-    reader.deserialize().map(|result| result.unwrap()).collect()
-}
-
 #[derive(Debug, Deserialize)]
 pub struct SymbolMapping {
     #[serde(rename = "Name")]
@@ -143,14 +144,6 @@ pub struct SymbolMapping {
     ascii: Vec<String>,
     #[serde(rename = "Unicode")]
     unicode: String,
-}
-
-fn vec_from_semicolon_separated_str<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let s: &str = Deserialize::deserialize(deserializer)?;
-    Ok(s.split(';').map(|s| s.to_string()).collect())
 }
 
 impl SymbolMapping {
@@ -190,17 +183,32 @@ impl SymbolMapping {
         }
     }
 
-    fn chars_added(&self, mode: &Mode, src_symbol: &str) -> CharQuantity<i8> {
+    fn chars_added(&self, mode: &Mode, src_symbol: &str) -> CharDiff {
         match mode {
-            Mode::AsciiToUnicode => CharQuantity(
-                (self.unicode.chars().count() as i8) - (src_symbol.chars().count() as i8),
-            ),
-            Mode::UnicodeToAscii => CharQuantity(
-                (self.canonical_ascii().chars().count() as i8)
-                    - (self.unicode.chars().count() as i8),
-            ),
+            Mode::AsciiToUnicode => {
+                CharQuantity(self.unicode.chars().count())
+                    - CharQuantity(src_symbol.chars().count())
+            }
+            Mode::UnicodeToAscii => {
+                CharQuantity(self.canonical_ascii().chars().count())
+                    - CharQuantity(self.unicode.chars().count())
+            }
         }
     }
+}
+
+fn vec_from_semicolon_separated_str<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s: &str = Deserialize::deserialize(deserializer)?;
+    Ok(s.split(';').map(|s| s.to_string()).collect())
+}
+
+pub fn get_unicode_mappings() -> Vec<SymbolMapping> {
+    let csv = include_str!("../resources/tla-unicode.csv");
+    let mut reader = csv::Reader::from_reader(csv.as_bytes());
+    reader.deserialize().map(|result| result.unwrap()).collect()
 }
 
 #[derive(Debug)]
@@ -222,26 +230,60 @@ impl TlaLine {
             .collect()
     }
 
-    fn shift(
-        &mut self,
-        char_diff: CharQuantity<i8>,
-        char_diff_start_index: CharQuantity<usize>,
-        byte_diff: ByteQuantity<i8>,
-        byte_diff_start_index: ByteQuantity<usize>,
-    ) {
+    fn shift_jlists(&mut self, &diff: &CharDiff, start_index: &StrElementQuantity) {
         for jlist in &mut self.jlists {
-            if jlist.char_column > char_diff_start_index {
-                //jlist.char_column = CharQuantity((jlist.char_column as i32 + char_diff as i32) as usize);
-                jlist.char_column = jlist.char_column + char_diff;
-            }
-        }
+            if jlist.column > start_index.char {
+                jlist.column = jlist.column + diff;
 
-        for symbol in &mut self.symbols {
-            if symbol.src_byte_range.start > byte_diff_start_index {
-                symbol.src_byte_range = (symbol.src_byte_range.start + byte_diff)
-                    ..(symbol.src_byte_range.end + byte_diff);
+                if let Some(offset) = &mut jlist.terminating_infix_op_offset {
+                    offset.column = offset.column - diff;
+                }
             }
         }
+    }
+
+    fn shift_symbols(&mut self, &diff: &ByteDiff, start_index: &StrElementQuantity) {
+        for symbol in &mut self.symbols {
+            if symbol.src_byte_range.start >= start_index.byte {
+                symbol.src_byte_range =
+                    (symbol.src_byte_range.start + diff)..(symbol.src_byte_range.end + diff);
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+struct JList {
+    column: CharQuantity,
+    bullet_line_offsets: Vec<usize>,
+    terminating_infix_op_offset: Option<Offset>,
+}
+
+#[derive(Debug)]
+struct Offset {
+    row: usize,
+    column: CharDiff,
+}
+
+impl JList {
+    fn query() -> Query {
+        Query::new(
+            tree_sitter_tlaplus::language(),
+            "[(conj_list) (disj_list)] @jlist",
+        )
+        .unwrap()
+    }
+
+    fn terminating_infix_op_query() -> Query {
+        Query::new(
+            tree_sitter_tlaplus::language(),
+            "(bound_infix_op lhs: [(conj_list) (disj_list)]) @capture",
+        )
+        .unwrap()
+    }
+
+    fn is_jlist_item_node(cursor: &TreeCursor) -> bool {
+        "conj_item" == cursor.node().kind() || "disj_item" == cursor.node().kind()
     }
 }
 
@@ -251,10 +293,12 @@ fn mark_jlists(tree: &Tree, query_cursor: &mut QueryCursor, tla_lines: &mut [Tla
         let node = capture.captures[0].node;
         let start_line = node.start_position().row;
         let line = &mut tla_lines[start_line];
-        let char_column = CharQuantity(line.text[..node.start_position().column].chars().count());
+        let column =
+            CharQuantity::from_byte_index(&ByteQuantity(node.start_position().column), &line.text);
         let mut jlist = JList {
-            char_column,
+            column,
             bullet_line_offsets: Vec::new(),
+            terminating_infix_op_offset: None,
         };
         tree_cursor.reset(node);
         tree_cursor.goto_first_child();
@@ -270,26 +314,34 @@ fn mark_jlists(tree: &Tree, query_cursor: &mut QueryCursor, tla_lines: &mut [Tla
 
         line.jlists.push(jlist);
     }
+
+    for capture in query_cursor.matches(
+        &JList::terminating_infix_op_query(),
+        tree.root_node(),
+        "".as_bytes(),
+    ) {
+        let infix_op_node = capture.captures[0].node;
+        let start_line = infix_op_node.start_position().row;
+        let line = &mut tla_lines[start_line];
+        let jlist_node = infix_op_node.child_by_field_name("lhs").unwrap();
+        let column = CharQuantity::from_byte_index(
+            &ByteQuantity(jlist_node.start_position().column),
+            &line.text,
+        );
+        let jlist = line.jlists.iter_mut().find(|j| j.column == column).unwrap();
+        let symbol_node = infix_op_node.child_by_field_name("symbol").unwrap();
+        jlist.terminating_infix_op_offset = Some(Offset {
+            row: symbol_node.start_position().row - start_line,
+            column: CharQuantity(symbol_node.start_position().column) - column,
+        });
+    }
 }
 
 #[derive(Debug)]
-struct JList {
-    char_column: CharQuantity<usize>,
-    bullet_line_offsets: Vec<usize>,
-}
-
-impl JList {
-    fn query() -> Query {
-        Query::new(
-            tree_sitter_tlaplus::language(),
-            "[(conj_list) (disj_list)] @jlist",
-        )
-        .unwrap()
-    }
-
-    fn is_jlist_item_node(cursor: &TreeCursor) -> bool {
-        "conj_item" == cursor.node().kind() || "disj_item" == cursor.node().kind()
-    }
+struct Symbol {
+    diff: CharDiff,
+    src_byte_range: Range<ByteQuantity>,
+    target: String,
 }
 
 fn mark_symbols(tree: &Tree, cursor: &mut QueryCursor, tla_lines: &mut [TlaLine], mode: &Mode) {
@@ -312,21 +364,11 @@ fn mark_symbols(tree: &Tree, cursor: &mut QueryCursor, tla_lines: &mut [TlaLine]
         let src_symbol = &line.text[ByteQuantity::as_range(&src_byte_range)];
         let target = mapping.target_symbol(mode).to_string();
         line.symbols.push(Symbol {
-            char_diff: mapping.chars_added(mode, src_symbol),
-            byte_diff: ByteQuantity::<i8>::from(src_byte_range.end - src_byte_range.start)
-                - ByteQuantity(target.len() as i8),
+            diff: mapping.chars_added(mode, src_symbol),
             src_byte_range,
             target,
         });
     }
-}
-
-#[derive(Debug)]
-struct Symbol {
-    char_diff: CharQuantity<i8>,
-    byte_diff: ByteQuantity<i8>,
-    src_byte_range: Range<ByteQuantity<usize>>,
-    target: String,
 }
 
 fn replace_symbols(tla_lines: &mut [TlaLine]) {
@@ -334,64 +376,97 @@ fn replace_symbols(tla_lines: &mut [TlaLine]) {
         let (prefix, suffix) = tla_lines.split_at_mut(line_number + 1);
         let line = &mut prefix[line_number];
         while let Some(symbol) = line.symbols.pop() {
-            let symbol_start_char_index = CharQuantity(
-                line.text[ByteQuantity::<usize>::as_range_to(&symbol.src_byte_range.start)]
-                    .chars()
-                    .count(),
-            );
+            let symbol_start_index =
+                StrElementQuantity::from_byte_index(&symbol.src_byte_range.start, &line.text);
             line.text.replace_range(
                 ByteQuantity::as_range(&symbol.src_byte_range),
                 &symbol.target,
             );
-            line.shift(
-                symbol.char_diff,
-                symbol_start_char_index,
-                symbol.byte_diff,
-                symbol.src_byte_range.start,
-            );
-            fix_alignment(line, suffix, symbol.char_diff, symbol_start_char_index);
+            line.shift_jlists(&symbol.diff, &symbol_start_index);
+            fix_alignment(line, suffix, &symbol.diff, &symbol_start_index);
         }
     }
 }
 
 fn fix_alignment(
-    line: &TlaLine,
+    line: &mut TlaLine,
     suffix: &mut [TlaLine],
-    char_diff: CharQuantity<i8>,
-    symbol_start_char_index: CharQuantity<usize>,
+    &diff: &CharDiff,
+    symbol_start_index: &StrElementQuantity,
 ) {
-    if char_diff == CharQuantity(0) {
+    // If there was no net change in character count, there is no need to fix alignment
+    if diff == CharDiff(0) {
         return;
     }
-    for jlist in &line.jlists {
-        if jlist.char_column <= symbol_start_char_index {
+
+    // Recursively fix alignment of all jlist bullets
+    for jlist in &mut line.jlists {
+        // Ignore jlists starting before the index of modification in this line
+        if jlist.column <= symbol_start_index.char {
             continue;
         }
-        for &offset in &jlist.bullet_line_offsets {
-            if offset == 0 {
+
+        // Add or remove spaces from the start of the line for each bullet in this jlist
+        let mod_index = StrElementQuantity {
+            char: CharQuantity(0),
+            byte: ByteQuantity(0),
+        };
+        for &line_offset in &jlist.bullet_line_offsets {
+            // Alignment of first element of jlist was already changed by original modification
+            if line_offset == 0 {
                 continue;
             }
-            let (suffix_prefix, suffix_suffix) = suffix.split_at_mut(offset);
-            let bullet_line = &mut suffix_prefix[offset - 1];
 
-            // Add or remove spaces from the start of the line
-            // Since we are inserting ASCII spaces, byte_diff is equal to char_diff
-            let byte_diff: ByteQuantity<i8> = char_diff.into();
-            if byte_diff < ByteQuantity(0) {
-                bullet_line
-                    .text
-                    .drain(ByteQuantity::<i8>::as_range_to(&(-byte_diff)));
-            } else {
-                bullet_line
-                    .text
-                    .insert_str(0, " ".repeat(char_diff.value() as usize).as_ref());
-            }
-
-            bullet_line.shift(char_diff, CharQuantity(0), byte_diff, ByteQuantity(0));
+            let (suffix_prefix, suffix_suffix) = suffix.split_at_mut(line_offset);
+            let bullet_line = &mut suffix_prefix[line_offset - 1];
+            let bullet_column = jlist.column - diff;
+            pad(bullet_line, &diff, &mod_index, &bullet_column);
 
             // Recursively fix alignment of any jlists starting on this line
-            fix_alignment(bullet_line, suffix_suffix, char_diff, CharQuantity(0));
+            fix_alignment(bullet_line, suffix_suffix, &diff, &mod_index);
         }
+
+        // Fix alignment of terminating infix op for this jlist, if it exists
+        if let Some(infix_op_offset) = &mut jlist.terminating_infix_op_offset {
+            let (suffix_prefix, suffix_suffix) = suffix.split_at_mut(infix_op_offset.row);
+            let infix_op_line = &mut suffix_prefix[infix_op_offset.row - 1];
+
+            // Currently the offset will never be positive so we don't need to handle that
+            // case; However, we have to worry about the operator hitting the beginning of
+            // the line after which it can no longer be adjusted left.
+            let op_column = jlist.column + infix_op_offset.column;
+            let diff = pad(infix_op_line, &diff, &mod_index, &op_column);
+            fix_alignment(infix_op_line, suffix_suffix, &diff, &mod_index);
+            let new_op_column = op_column + diff;
+            infix_op_offset.column = jlist.column - new_op_column;
+        }
+    }
+}
+
+fn pad(
+    line: &mut TlaLine,
+    &diff: &CharDiff,
+    mod_index: &StrElementQuantity,
+    &first_symbol_index: &CharQuantity,
+) -> CharDiff {
+    if diff < CharDiff(0) {
+        // Calculate min to ensure we don't move a symbol to before the end of the line
+        let spaces_to_remove = CharQuantity::min(diff.magnitude(), first_symbol_index);
+        let bytes_to_remove = ByteQuantity::from_char_index(&spaces_to_remove, &line.text);
+        line.text.drain(bytes_to_remove.range_to());
+        let char_diff = mod_index.char - spaces_to_remove;
+        let pad_diff = mod_index.byte - bytes_to_remove;
+        line.shift_jlists(&char_diff, &mod_index);
+        line.shift_symbols(&pad_diff, &mod_index);
+        char_diff
+    } else {
+        let spaces_to_add = diff.magnitude();
+        line.text.insert_str(0, &spaces_to_add.repeat(" "));
+        let spaces_added_in_bytes = ByteQuantity::from_char_index(&spaces_to_add, &line.text);
+        let pad_diff = spaces_added_in_bytes - mod_index.byte;
+        line.shift_jlists(&diff, &mod_index);
+        line.shift_symbols(&pad_diff, &mod_index);
+        diff
     }
 }
 
@@ -428,8 +503,11 @@ mod tests {
             Err(TlaError::InputFileParseError(tree)) => {
                 panic!("{}", tree.root_node().to_sexp())
             }
-            Err(TlaError::OutputFileParseError(tree)) => {
-                panic!("{}", tree.root_node().to_sexp())
+            Err(TlaError::OutputFileParseError {
+                output_tree,
+                output,
+            }) => {
+                panic!("{}\n{}", output, output_tree.root_node().to_sexp())
             }
             Err(TlaError::InvalidTranslationError {
                 input_tree: _,
@@ -446,13 +524,18 @@ mod tests {
         let intermediate = unwrap_conversion(rewrite(expected, &Mode::AsciiToUnicode, false));
         check_ascii_replaced(&intermediate);
         let actual = unwrap_conversion(rewrite(&intermediate, &Mode::UnicodeToAscii, false));
-        assert_eq!(expected, actual);
+        assert_eq!(
+            expected, actual,
+            "\nExpected:\n{}\nActual:\n{}",
+            expected, actual
+        );
     }
 
     #[test]
     fn basic_roundtrip() {
         run_roundtrip_test(
-            r#"---- MODULE Test ----
+            r#"
+---- MODULE Test ----
 op == \A n \in Nat: n >= 0
 ===="#,
         );
@@ -461,7 +544,8 @@ op == \A n \in Nat: n >= 0
     #[test]
     fn all_canonical_symbols_roundtrip() {
         run_roundtrip_test(
-            r#"---- MODULE Test ----
+            r#"
+---- MODULE Test ----
 op == \A n \in Nat : \E r \in Real : ~(n = r)
 op == {x \in R : TRUE}
 op == INSTANCE Module WITH x <- y
@@ -488,7 +572,8 @@ op == A \sqcup B \uplus C \X D \wr E \cdot F ^+
 
     #[test]
     fn all_non_canonical_symbols_roundtrip() {
-        let expected = r#"---- MODULE Test ----
+        let expected = r#"
+---- MODULE Test ----
 op == \forall n \in Nat : TRUE
 op == \exists r \in Real : TRUE
 op == \neg P
@@ -513,7 +598,7 @@ op == P \times Q
         let actual = unwrap_conversion(rewrite(&intermediate, &Mode::UnicodeToAscii, false));
         // Only first and last lines should be the same
         for (i, (expected_line, actual_line)) in zip(expected.lines(), actual.lines()).enumerate() {
-            if i == 0 || i == expected.lines().count() - 1 {
+            if i <= 1 || i == expected.lines().count() - 1 {
                 assert_eq!(expected_line, actual_line);
             } else {
                 assert_ne!(expected_line, actual_line);
@@ -524,7 +609,8 @@ op == P \times Q
     #[test]
     fn test_basic_jlist() {
         run_roundtrip_test(
-            r#"---- MODULE Test ----
+            r#"
+---- MODULE Test ----
 op == /\ A
       /\ B
       /\ C
@@ -536,7 +622,8 @@ op == /\ A
     #[test]
     fn test_nested_jlist() {
         run_roundtrip_test(
-            r#"---- MODULE Test ----
+            r#"
+---- MODULE Test ----
 op == /\ A
       /\ \/ B 
          \/ C
@@ -548,7 +635,8 @@ op == /\ A
     #[test]
     fn test_full_binary_tree_jlist() {
         run_roundtrip_test(
-            r#"---- MODULE Test ----
+            r#"
+---- MODULE Test ----
 op == /\ \/ /\ \/ /\ A
                   /\ B
                \/ /\ C
@@ -588,7 +676,8 @@ op == /\ \/ /\ \/ /\ A
     #[test]
     fn jlist_with_comments() {
         run_roundtrip_test(
-            r#"---- MODULE Test ----
+            r#"
+---- MODULE Test ----
 op == /\ A
       /\ \/ B 
 \* This is a comment
@@ -599,11 +688,11 @@ op == /\ A
         );
     }
 
-    #[ignore]
     #[test]
-    fn test_infix_op_edge_case() {
+    fn test_trailing_infix_op() {
         run_roundtrip_test(
-            r#"---- MODULE Test ----
+            r#"
+---- MODULE Test ----
 op == /\ A
       /\ B
       => C
@@ -611,14 +700,58 @@ op == /\ A
         );
     }
 
-    #[ignore]
     #[test]
-    fn test_misaligned_jlist_edge_case() {
+    fn test_trailing_infix_op_at_line_start() {
+        let expected = r#"
+---- MODULE Test ----
+op == /\ A
+      /\ B
+=> C
+===="#;
+        let intermediate = unwrap_conversion(rewrite(expected, &Mode::AsciiToUnicode, false));
+        check_ascii_replaced(&intermediate);
+        unwrap_conversion(rewrite(&intermediate, &Mode::UnicodeToAscii, false));
+    }
+
+    #[test]
+    fn test_misaligned_jlist() {
         run_roundtrip_test(
-            r#"---- MODULE Test ----
+            r#"
+---- MODULE Test ----
 op == /\ A
      /\ B
      /\ C
+===="#,
+        );
+    }
+
+    // https://github.com/tlaplus-community/tlauc/issues/1
+    #[ignore]
+    #[test]
+    fn test_infix_op_jlist_from_unicode() {
+        run_roundtrip_test(
+            r#"
+---- MODULE Test ----
+op ≜ ∧ A
+     ∧ B
+      = C
+     ∧ D
+      = E
+===="#,
+        );
+    }
+
+    // https://github.com/tlaplus-community/tlauc/issues/2
+    #[ignore]
+    #[test]
+    fn test_block_comments_prefixing_jlist_items() {
+        run_roundtrip_test(
+            r#"
+---- MODULE Test ----
+op == /\ A
+(***) /\ \/ B
+(******) \/ C
+(***) => D
 ===="#,
         );
     }
