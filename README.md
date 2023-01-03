@@ -110,7 +110,6 @@ fn main() {
 ## Details
 
 TLA⁺ often has several ASCII symbols all representing the same operator (for example, `<=`, `=<`, and `\leq`); these will all map to the same Unicode symbol (`≤`), and when mapping back to ASCII the first ASCII symbol in the semicolon-separated CSV cell will be used (`<=`).
-Users may use this tool to convert their old ASCII TLA⁺ files to more-easily-read Unicode symbols, or convert their Unicode TLA⁺ files to ASCII for tools which cannot yet handle Unicode.
 
 The reason this program isn't just a simple search & replace is that blank space and column alignment matters for some TLA⁺ constructs, specifically conjunction and disjunction lists (henceforth called jlists):
 
