@@ -2,6 +2,7 @@ use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand};
 use std::fs::File;
 use std::io::{Read, Write};
+use std::path::Path;
 use tlauc::{rewrite, Mode, TlaError};
 
 #[derive(Parser)]
@@ -65,7 +66,12 @@ fn convert(config: &Config, mode: Mode) -> Result<()> {
             .read_to_string(&mut input)
             .context(format!("Failed to read input file [{}]", &config.input))?;
     }
-    match File::options().write(true).create_new(!(config.overwrite || config.force)).open(&config.output) {
+
+    if Path::new(&config.output).exists() && !(config.overwrite || config.force) {
+        return Err(anyhow!("File already exists at output file location [{}]; use --overwrite flag to overwrite it", &config.output));
+    }
+
+    match File::create(&config.output) {
         Ok(mut output_file) => {
             match rewrite(&input, &mode, config.force) {
                 Ok(output) => {
