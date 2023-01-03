@@ -7,10 +7,10 @@ pub struct StrElementQuantity {
 }
 
 impl StrElementQuantity {
-    pub fn from_byte_index(byte_index: &ByteQuantity, text: &str) -> Self {
+    pub fn from_byte_index(&byte_index: &ByteQuantity, text: &str) -> Self {
         StrElementQuantity {
-            char: CharQuantity::from_byte_index(byte_index, text),
-            byte: byte_index.clone(),
+            char: CharQuantity::from_byte_index(&byte_index, text),
+            byte: byte_index,
         }
     }
 }

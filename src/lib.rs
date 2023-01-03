@@ -42,7 +42,7 @@ pub fn rewrite(input: &str, mode: &Mode, force: bool) -> Result<String, TlaError
 
     // Identify & replace symbols
     mark_jlists(&input_tree, &mut cursor, &mut tla_lines);
-    mark_symbols(&input_tree, &mut cursor, &mut tla_lines, &mode);
+    mark_symbols(&input_tree, &mut cursor, &mut tla_lines, mode);
     //println!("{:#?}", tla_lines);
     replace_symbols(&mut tla_lines);
 
@@ -230,17 +230,17 @@ impl TlaLine {
             .collect()
     }
 
-    fn shift_jlists(&mut self, &diff: &CharDiff, start_index: &StrElementQuantity) {
+    fn shift_jlists(&mut self, &diff: &CharDiff, &start_index: &CharQuantity) {
         for jlist in &mut self.jlists {
-            if jlist.column > start_index.char {
+            if jlist.column > start_index {
                 jlist.column = jlist.column + diff;
             }
         }
     }
 
-    fn shift_symbols(&mut self, &diff: &ByteDiff, start_index: &StrElementQuantity) {
+    fn shift_symbols(&mut self, &diff: &ByteDiff, &start_index: &ByteQuantity) {
         for symbol in &mut self.symbols {
-            if symbol.src_byte_range.start >= start_index.byte {
+            if symbol.src_byte_range.start >= start_index {
                 symbol.src_byte_range =
                     (symbol.src_byte_range.start + diff)..(symbol.src_byte_range.end + diff);
             }
@@ -325,14 +325,18 @@ fn mark_jlists(tree: &Tree, query_cursor: &mut QueryCursor, tla_lines: &mut [Tla
             &ByteQuantity(jlist_node.start_position().column),
             &jlist_start_line.text,
         );
-        let jlist = jlist_start_line.jlists.iter_mut().find(|j| j.column == jlist_column).unwrap();
+        let jlist = jlist_start_line
+            .jlists
+            .iter_mut()
+            .find(|j| j.column == jlist_column)
+            .unwrap();
         let symbol_node = infix_op_node.child_by_field_name("symbol").unwrap();
         let symbol_line_offset = symbol_node.start_position().row - jlist_start_line_index;
         let symbol_line = &suffix[symbol_line_offset - 1];
         let symbol_column = ByteQuantity(symbol_node.start_position().column);
         jlist.terminating_infix_op_offset = Some(InfixOp {
             line_offset: symbol_line_offset,
-            column: CharQuantity::from_byte_index(&symbol_column, &symbol_line.text)
+            column: CharQuantity::from_byte_index(&symbol_column, &symbol_line.text),
         });
     }
 }
@@ -382,7 +386,7 @@ fn replace_symbols(tla_lines: &mut [TlaLine]) {
                 ByteQuantity::as_range(&symbol.src_byte_range),
                 &symbol.target,
             );
-            line.shift_jlists(&symbol.diff, &symbol_start_index);
+            line.shift_jlists(&symbol.diff, &symbol_start_index.char);
             fix_alignment(line, suffix, &symbol.diff, &symbol_start_index);
         }
     }
@@ -450,16 +454,16 @@ fn pad(
         line.text.drain(bytes_to_remove.range_to());
         let char_diff = mod_index.char - spaces_to_remove;
         let pad_diff = mod_index.byte - bytes_to_remove;
-        line.shift_jlists(&char_diff, &mod_index);
-        line.shift_symbols(&pad_diff, &mod_index);
+        line.shift_jlists(&char_diff, &mod_index.char);
+        line.shift_symbols(&pad_diff, &mod_index.byte);
         char_diff
     } else {
         let spaces_to_add = diff.magnitude();
         line.text.insert_str(0, &spaces_to_add.repeat(" "));
         let spaces_added_in_bytes = ByteQuantity::from_char_index(&spaces_to_add, &line.text);
         let pad_diff = spaces_added_in_bytes - mod_index.byte;
-        line.shift_jlists(&diff, &mod_index);
-        line.shift_symbols(&pad_diff, &mod_index);
+        line.shift_jlists(&diff, &mod_index.char);
+        line.shift_symbols(&pad_diff, &mod_index.byte);
         diff
     }
 }
@@ -708,13 +712,20 @@ op == /\ A
     }
 
     #[test]
-    fn test_trailing_infix_op_nested_jlist() {
+    fn test_nested_trailing_infix_op() {
         let expected = r#"
 ---- MODULE Test ----
 op == /\ A
       /\ B
 => /\ C
-   /\ D
+   /\ \/ D
+      \/ E
+      => /\ F
+         /\ G
+ => H
+op == A <=> /\ B
+            /\ C
+ => D
 ===="#;
         let intermediate = unwrap_conversion(rewrite(expected, &Mode::AsciiToUnicode, false));
         check_ascii_replaced(&intermediate);

@@ -236,9 +236,9 @@ Note also that comments can include arbitrary Unicode symbols so care must be ta
 Of course this means the jlists will not be aligned in non-Unicode-aware tooling, but that is the concern of the user; this tool does not modify comment text.
 It really only seems feasible to assume one codepoint = one displayed character; alignment according to grapheme clusters would add unnecessary complication to a very niche use case.
 
-The block comment edge case has not been observed in the wild and so is not yet supported; see https://github.com/tlaplus-community/tlauc/issues/2.
+The block comment edge case has not been observed in the wild and so is not yet supported; see issue https://github.com/tlaplus-community/tlauc/issues/2.
 
 ## Prior Art
 
-Ron Pressler did some work ([link](https://github.com/pron/tlaplus/tree/unicode-presentation-2/tlatools/src/tla2unicode)) in early 2017 trying to add Unicode support to SANY, which faced many of the same challenges around jlist alignment.
+[Ron Pressler](https://pron.github.io/) did some work ([link](https://github.com/pron/tlaplus/tree/unicode-presentation-2/tlatools/src/tla2unicode)) in early 2017 trying to add Unicode support to SANY, which faced many of the same challenges around jlist alignment.
 
