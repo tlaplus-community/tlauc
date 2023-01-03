@@ -4,12 +4,12 @@
 
 Take the leap! Move from
 ```tla
-S^+ == {e \in S : s > 0}
+S^+ == {e \in S : e > 0}
 Infinitesimal == \A x \in Real^+: \E y \in Real^+: y < x
 ```
 to
 ```tla
-S⁺ ≜ {e ∈ S : s > 0}
+S⁺ ≜ {e ∈ S : e > 0}
 Infinitesimal ≜ ∀ x ∈ ℝ⁺: ∃ y ∈ ℝ⁺: y < x
 ```
 
