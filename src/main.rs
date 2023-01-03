@@ -71,27 +71,17 @@ fn convert(config: &Config, mode: Mode) -> Result<()> {
         return Err(anyhow!("File already exists at output file location [{}]; use --overwrite flag to overwrite it", &config.output));
     }
 
-    match File::create(&config.output) {
-        Ok(mut output_file) => {
-            match rewrite(&input, &mode, config.force) {
-                Ok(output) => {
-                    output_file.write_all(output.as_bytes()).context(format!("Failed to write to output file [{}]", &config.output))?;
-                    Ok(())
-                },
-                Err(TlaError::InputFileParseError(_)) => Err(anyhow!("Failed to correctly parse input TLA⁺ file; use --force flag to bypass this check.")),
-                Err(TlaError::OutputFileParseError{..}) => Err(anyhow!("Failed to correctly parse converted TLA⁺ output; this is a bug, please report it to the maintainer! Use --force to bypass this check (not recommended).")),
-                Err(TlaError::InvalidTranslationError { input_tree: _, output_tree: _, output: _, first_diff }) => {
-                    let err_msg = "Converted TLA⁺ parse tree differs from original; this is a bug, please report it to the maintainer! Use --force to bypass this check (not recommended).";
-                    Err(anyhow!("{}\n{}", err_msg, first_diff))
-                }
-            }
+    let mut output_file = File::create(&config.output)?;
+    match rewrite(&input, &mode, config.force) {
+        Ok(output) => {
+            output_file.write_all(output.as_bytes()).context(format!("Failed to write to output file [{}]", &config.output))?;
+            Ok(())
         },
-        Err(e) => {
-            if std::io::ErrorKind::AlreadyExists == e.kind() {
-                Err(e).context(format!("File already exists at output file location [{}]; use --overwrite flag to overwrite it", &config.output))?
-            } else {
-                Err(e).context(format!("Failed to open output file [{}]", &config.output))?
-            }
+        Err(TlaError::InputFileParseError(_)) => Err(anyhow!("Failed to correctly parse input TLA⁺ file; use --force flag to bypass this check.")),
+        Err(TlaError::OutputFileParseError{..}) => Err(anyhow!("Failed to correctly parse converted TLA⁺ output; this is a bug, please report it to the maintainer! Use --force to bypass this check (not recommended).")),
+        Err(TlaError::InvalidTranslationError { input_tree: _, output_tree: _, output: _, first_diff }) => {
+            let err_msg = "Converted TLA⁺ parse tree differs from original; this is a bug, please report it to the maintainer! Use --force to bypass this check (not recommended).";
+            Err(anyhow!("{}\n{}", err_msg, first_diff))
         }
     }
 }
