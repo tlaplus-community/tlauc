@@ -9,6 +9,7 @@ readme = "README.md"
 keywords = ["tlaplus", "unicode"]
 categories = ["command-line-utilities", "text-editors"]
 edition = "2018"
+exclude = ["tests/corpus", ".github", ".gitignore", ".gitmodules"]
 
 [dependencies]
 anyhow = "1.0.68"
