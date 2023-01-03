@@ -234,10 +234,6 @@ impl TlaLine {
         for jlist in &mut self.jlists {
             if jlist.column > start_index.char {
                 jlist.column = jlist.column + diff;
-
-                if let Some(offset) = &mut jlist.terminating_infix_op_offset {
-                    offset.column = offset.column - diff;
-                }
             }
         }
     }
@@ -256,13 +252,13 @@ impl TlaLine {
 struct JList {
     column: CharQuantity,
     bullet_line_offsets: Vec<usize>,
-    terminating_infix_op_offset: Option<Offset>,
+    terminating_infix_op_offset: Option<InfixOp>,
 }
 
 #[derive(Debug)]
-struct Offset {
-    row: usize,
-    column: CharDiff,
+struct InfixOp {
+    line_offset: usize,
+    column: CharQuantity,
 }
 
 impl JList {
@@ -321,18 +317,22 @@ fn mark_jlists(tree: &Tree, query_cursor: &mut QueryCursor, tla_lines: &mut [Tla
         "".as_bytes(),
     ) {
         let infix_op_node = capture.captures[0].node;
-        let start_line = infix_op_node.start_position().row;
-        let line = &mut tla_lines[start_line];
         let jlist_node = infix_op_node.child_by_field_name("lhs").unwrap();
-        let column = CharQuantity::from_byte_index(
+        let jlist_start_line_index = jlist_node.start_position().row;
+        let (prefix, suffix) = tla_lines.split_at_mut(jlist_start_line_index + 1);
+        let jlist_start_line = &mut prefix[jlist_start_line_index];
+        let jlist_column = CharQuantity::from_byte_index(
             &ByteQuantity(jlist_node.start_position().column),
-            &line.text,
+            &jlist_start_line.text,
         );
-        let jlist = line.jlists.iter_mut().find(|j| j.column == column).unwrap();
+        let jlist = jlist_start_line.jlists.iter_mut().find(|j| j.column == jlist_column).unwrap();
         let symbol_node = infix_op_node.child_by_field_name("symbol").unwrap();
-        jlist.terminating_infix_op_offset = Some(Offset {
-            row: symbol_node.start_position().row - start_line,
-            column: CharQuantity(symbol_node.start_position().column) - column,
+        let symbol_line_offset = symbol_node.start_position().row - jlist_start_line_index;
+        let symbol_line = &suffix[symbol_line_offset - 1];
+        let symbol_column = ByteQuantity(symbol_node.start_position().column);
+        jlist.terminating_infix_op_offset = Some(InfixOp {
+            line_offset: symbol_line_offset,
+            column: CharQuantity::from_byte_index(&symbol_column, &symbol_line.text)
         });
     }
 }
@@ -428,17 +428,11 @@ fn fix_alignment(
 
         // Fix alignment of terminating infix op for this jlist, if it exists
         if let Some(infix_op_offset) = &mut jlist.terminating_infix_op_offset {
-            let (suffix_prefix, suffix_suffix) = suffix.split_at_mut(infix_op_offset.row);
-            let infix_op_line = &mut suffix_prefix[infix_op_offset.row - 1];
-
-            // Currently the offset will never be positive so we don't need to handle that
-            // case; However, we have to worry about the operator hitting the beginning of
-            // the line after which it can no longer be adjusted left.
-            let op_column = jlist.column + infix_op_offset.column;
-            let diff = pad(infix_op_line, &diff, &mod_index, &op_column);
+            let (suffix_prefix, suffix_suffix) = suffix.split_at_mut(infix_op_offset.line_offset);
+            let infix_op_line = &mut suffix_prefix[infix_op_offset.line_offset - 1];
+            let diff = pad(infix_op_line, &diff, &mod_index, &infix_op_offset.column);
+            infix_op_offset.column = infix_op_offset.column + diff;
             fix_alignment(infix_op_line, suffix_suffix, &diff, &mod_index);
-            let new_op_column = op_column + diff;
-            infix_op_offset.column = jlist.column - new_op_column;
         }
     }
 }
@@ -689,7 +683,7 @@ op == /\ A
     }
 
     #[test]
-    fn test_trailing_infix_op() {
+    fn test_aligned_trailing_infix_op() {
         run_roundtrip_test(
             r#"
 ---- MODULE Test ----
@@ -707,6 +701,20 @@ op == /\ A
 op == /\ A
       /\ B
 => C
+===="#;
+        let intermediate = unwrap_conversion(rewrite(expected, &Mode::AsciiToUnicode, false));
+        check_ascii_replaced(&intermediate);
+        unwrap_conversion(rewrite(&intermediate, &Mode::UnicodeToAscii, false));
+    }
+
+    #[test]
+    fn test_trailing_infix_op_nested_jlist() {
+        let expected = r#"
+---- MODULE Test ----
+op == /\ A
+      /\ B
+=> /\ C
+   /\ D
 ===="#;
         let intermediate = unwrap_conversion(rewrite(expected, &Mode::AsciiToUnicode, false));
         check_ascii_replaced(&intermediate);

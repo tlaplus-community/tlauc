@@ -1,23 +1,31 @@
 # TLAUC: The TLA⁺ Unicode Converter
 [![Build & Test](https://github.com/tlaplus-community/tlauc/actions/workflows/ci.yml/badge.svg)](https://github.com/tlaplus-community/tlauc/actions/workflows/ci.yml)
 
-## Overview
-
-Move beyond `\A`, `\E`, `[]`, and `<>` to `∀`, `∃`, `□` and `⋄`!
+Take the leap! Move from
+```tla
+S^+ == {e \in S : s > 0}
+Infinitesimal == \A x \in Real^+: \E y \in Real^+: y < x
+```
+to
+```tla
+S⁺ ≜ {e ∈ S : s > 0}
+Infinitesimal ≜ ∀ x ∈ ℝ⁺: ∃ y ∈ ℝ⁺: y < x
+```
 
 This package will take any ASCII TLA⁺ file and convert all its symbols to their Unicode equivalent, or take any Unicode TLA⁺ file and convert all its symbols to their ASCII equivalent.
 It consists of two crates: a library exposing this functionality (using [tree-sitter-tlaplus](https://github.com/tlaplus-community/tree-sitter-tlaplus) under the hood), and a command line wrapper.
 
 Use this tool to:
 * Create a nice-looking copy of your spec that is pleasant to read but can still be edited and meaningfully tracked by source control
-* Write specs in Unicode with the [tlaplus-nvim-plugin](https://github.com/tlaplus-community/tlaplus-nvim-plugin) then convert them into ASCII for use with SANY and TLC
+* Confidently write specs in Unicode with the [tlaplus-nvim-plugin](https://github.com/tlaplus-community/tlaplus-nvim-plugin) then output their ASCII equivalent to a temporary file for use with SANY and TLC
 * Convert your existing ASCII specs to Unicode and use them with Unicode-aware tooling like [tla-web](https://github.com/will62794/tla-web)
 
-Note that GitHub itself uses the tree-sitter-tlaplus grammar for highlighting, so it supports Unicode TLA⁺ as shown in the highlighted code snippets below.
-If you run non-Unicode-aware tooling like TLC during your CI process you can add a step that uses this tool to translate your Unicode spec into TLC-supported form.
+Note that GitHub itself uses the tree-sitter-tlaplus grammar for highlighting, so it supports Unicode TLA⁺ as shown in the highlighted code snippets here.
+If you want to check Unicode specs into source control and run non-Unicode-aware tooling like TLC during your CI process, you can add a step using this tool to translate your Unicode spec into TLC-supported form.
 
 The symbol mapping can be found in the [`./resources/tla-unicode.csv`](./resources/tla-unicode.csv) file, taken from the [tlaplus-standard](https://github.com/tlaplus-community/tlaplus-standard) repo.
 The crate also provides programmatic access to these mappings.
+For an optimal TLA⁺ Unicode experience you'll want a monospace font that renders all these symbols in fixed width.
 
 ## Use
 
@@ -74,9 +82,9 @@ IsTotallyOrdered(S) ≜
 THEOREM RealsTotallyOrdered ≜ IsTotallyOrdered(ℝ)
 ====
 ```
-Details of reading & writing files are left to the user.
+Details of reading & writing files are left to the user, but you can look at the command line wrapper for a detailed example.
 
-Access the list of unicode mappings as follows:
+Access the list of Unicode mappings as follows:
 ```rs
 use tlauc::{SymbolMapping, get_unicode_mappings};
 
@@ -138,9 +146,6 @@ The tree-sitter parse tree for the above (correctly aligned) code snippet is:
   )
 )
 ```
-Note that for an optimal TLA⁺ unicode experience, you need a monospace font that renders all the relevant unicode math symbols in fixed width.
-Without this feature, displayed jlist alignment may differ from actual jlist alignment.
-
 For safety, the program checks to ensure the converted TLA⁺ file has the exact same parse tree as the original.
 It also will not convert the input file if it contains any parse errors.
 Both of these checks can be bypassed with the `--force` command line parameter (also exposed in the library).
@@ -165,7 +170,7 @@ They should be identical.
 
 ## Complications
 
-As always with variable-width UTF-8 encoded text, care must be taken to differentiate a symbol's (henceforth called a "codepoint") byte index from its character index.
+As always with variable-width UTF-8 encoded text, care must be taken to differentiate the byte index of a symbol (henceforth called a "codepoint") from its character index.
 We [long ago](https://www.joelonsoftware.com/2003/10/08/the-absolute-minimum-every-software-developer-absolutely-positively-must-know-about-unicode-and-character-sets-no-excuses/) left the world of "plain text = ASCII = characters are 1 byte".
 Now, each "character" is really a codepoint (an arbitrarily-large number identifying a symbol in the international Unicode standard) that can be 1 byte (as all the ASCII-equivalent codepoints remain, for seamless backward compatibility) or 2 bytes, or 3, 4, etc.
 Fundamentally this means that given a byte index, you can't know a codepoint's character index (here also called its "displayed" index) without reading from the beginning of whatever line you are on and counting how many codepoints you encounter.
@@ -210,7 +215,7 @@ op == /\ A
       = E
 ```
 So `(A ∧ (B = C)) ∧ (D = E)` is changed to `((A ∧ B) = C) ∧ D) = E`.
-This direction is substantially more difficult to detect via tree-sitter queries, since `B ∧ C` can be an arbitrarily-long and complicated expression that eventually spills onto additional lines.
+This direction is substantially more difficult to detect via tree-sitter queries, since `B = C` can be an arbitrarily-long and complicated expression that eventually spills onto additional lines.
 Since this scenario is very unlikely to occur in the wild until large numbers of TLA⁺ specs are being written in Unicode first, this case is not currently handled by the program (see issue https://github.com/tlaplus-community/tlauc/issues/1).
 
 Another edge case involves block comments in the (usually empty) space before jlist items:
