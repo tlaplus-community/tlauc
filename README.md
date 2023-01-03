@@ -1,5 +1,6 @@
 # TLAUC: The TLA⁺ Unicode Converter
 [![Build & Test](https://github.com/tlaplus-community/tlauc/actions/workflows/ci.yml/badge.svg)](https://github.com/tlaplus-community/tlauc/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/tlauc.svg)](https://crates.io/crates/tlauc)
 
 Take the leap! Move from
 ```tla
@@ -27,9 +28,14 @@ The symbol mapping can be found in the [`./resources/tla-unicode.csv`](./resourc
 The crate also provides programmatic access to these mappings.
 For an optimal TLA⁺ Unicode experience you'll want a monospace font that renders all these symbols in fixed width.
 
-## Use
+## Install & Use
 
 This crate contains both a library and its command line wrapper.
+
+To install the command line tool:
+1. Install rust: https://www.rust-lang.org/tools/install
+1. Run `cargo install tlauc`
+1. Ensure the [cargo installation directory](https://doc.rust-lang.org/cargo/commands/cargo-install.html#description) is on your path
 
 From the command line, convert a TLA⁺ file from ASCII to Unicode as follows:
 ```sh
@@ -43,7 +49,7 @@ By default, the program will fail if a file exists at the output location; overr
 There are also several safety checks performed during the translation process, like that the input spec parses correctly and that the output spec has the same parse tree as the input spec.
 You can override these safety checks with the `-f` or `--force` flag, which also sets the `--overwrite` flag.
 
-Consume the library from your own code as follows:
+To consume the library, add [the tlauc package](https://crates.io/crates/tlauc) as a dependency of your project then use it as follows:
 ```rs
 use tlauc::{rewrite, Mode};
 
