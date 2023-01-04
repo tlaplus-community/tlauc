@@ -68,7 +68,7 @@ IsTotallyOrdered(S) ==
     /\ Rotal(S)
 THEOREM RealsTotallyOrdered == IsTotallyOrdered(Real)
 ===="#;
-    println!("{}", rewrite(input, Mode::AsciiToUnicode, false).unwrap());
+    println!("{}", rewrite(input, &Mode::AsciiToUnicode, false).unwrap());
 }
 ```
 which will output:
@@ -88,7 +88,7 @@ IsTotallyOrdered(S) ≜
 THEOREM RealsTotallyOrdered ≜ IsTotallyOrdered(ℝ)
 ====
 ```
-Details of reading & writing files are left to the user, but you can look at the command line wrapper for a detailed example.
+Details of error handling and reading & writing files are left to the user, but you can look at the command line wrapper for an example.
 
 Access the list of Unicode mappings as follows:
 ```rs
@@ -245,5 +245,6 @@ The block comment edge case has not been observed in the wild and so is not yet 
 
 ## Prior Art
 
-[Ron Pressler](https://pron.github.io/) did some work ([link](https://github.com/pron/tlaplus/tree/unicode-presentation-2/tlatools/src/tla2unicode)) in early 2017 trying to add Unicode support to SANY, which faced many of the same challenges around jlist alignment.
+[Ron Pressler](https://pron.github.io/) did some work in early 2017 trying to add Unicode support to SANY; unfortunately this work was not successfully merged.
+He also wrote [a similar Unicode conversion tool](https://github.com/pron/tlaplus/tree/unicode-presentation-2/tlatools/src/tla2unicode), which faced many of the same challenges around jlist alignment.
 
