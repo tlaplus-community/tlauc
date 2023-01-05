@@ -1,7 +1,7 @@
 [package]
 name = "tlauc"
 description = "Rewrites TLA⁺ specs to use Unicode symbols instead of ASCII, and vice-versa"
-version = "0.1.2"
+version = "0.1.3"
 authors = ["Andrew Helwer <2n8rn1w1f@mozmail.com>"]
 repository = "https://github.com/tlaplus-community/tlauc"
 license = "MIT"
