@@ -3,13 +3,36 @@ on:
   release:
     types: [created]
 jobs:
-  rust-crate:
+  publish-rust-crate:
     runs-on: ubuntu-latest
     steps:
       - name: Clone repo
         uses: actions/checkout@v3
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
         with:
-          submodules: recursive
+          toolchain: stable
+      - name: Publish
+        uses: actions-rs/cargo@v1
+        with:
+          command: publish
+          args: --token ${{secrets.CRATES_AUTH_TOKEN}}
+  github-release-binaries:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            binname: tlauc-linux.tar.gz
+          - os: macos-latest
+            binname: tlauc-macos.tar.gz
+          - os: windows-latest
+            binname: tlauc-windows.zip
+      fail-fast: false
+    steps:
+      - name: Clone repo
+        uses: actions/checkout@v3
       - name: Install Rust
         uses: actions-rs/toolchain@v1
         with:
@@ -18,18 +41,21 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-      - name: Check Formatting
-        uses: actions-rs/cargo@v1
+          args: --release
+      - name: Package Binary
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: Compress-Archive -Path target/release/tlauc.exe -DestinationPath ${{ matrix.binname }}
+      - name: Package Binary
+        if: matrix.os == 'ubuntu-latest' || matrix.os == 'macos-latest'
+        run: tar -czvf ${{ matrix.binname }} -C target/release tlauc
+      - name: Upload Binary
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
         with:
-          command: fmt
-          args: --check
-      - name: Test
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: -- --nocapture
-      - name: Publish
-        uses: actions-rs/cargo@v1
-        with:
-          command: publish
-          args: --token ${{secrets.CRATES_AUTH_TOKEN}}
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ${{ matrix.binname }}
+          asset_name: ${{ matrix.binname }}
+          asset_content_type: application/gzip
+
