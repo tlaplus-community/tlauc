@@ -1,9 +1,15 @@
 use std::ops::{Add, Neg, Range, RangeTo, Sub};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, PartialOrd)]
 pub struct StrElementQuantity {
     pub char: CharQuantity,
     pub byte: ByteQuantity,
+}
+
+#[derive(Debug)]
+pub struct StrElementDiff {
+    pub char: CharDiff,
+    pub byte: ByteDiff,
 }
 
 impl StrElementQuantity {
@@ -12,6 +18,11 @@ impl StrElementQuantity {
             char: CharQuantity::from_byte_index(&byte_index, text),
             byte: byte_index,
         }
+    }
+
+    pub fn as_byte_range(range: &Range<StrElementQuantity>) -> Range<usize> {
+        let range = range.start.byte..range.end.byte;
+        ByteQuantity::as_range(&range)
     }
 }
 

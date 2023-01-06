@@ -1,5 +1,5 @@
 mod strmeasure;
-use crate::strmeasure::{ByteDiff, ByteQuantity, CharDiff, CharQuantity, StrElementQuantity};
+use crate::strmeasure::*;
 
 use serde::{Deserialize, Deserializer};
 use std::ops::Range;
@@ -238,11 +238,15 @@ impl TlaLine {
         }
     }
 
-    fn shift_symbols(&mut self, &diff: &ByteDiff, &start_index: &ByteQuantity) {
+    fn shift_symbols(&mut self, diff: &StrElementDiff, start_index: &StrElementQuantity) {
         for symbol in &mut self.symbols {
-            if symbol.src_byte_range.start >= start_index {
-                symbol.src_byte_range =
-                    (symbol.src_byte_range.start + diff)..(symbol.src_byte_range.end + diff);
+            if symbol.src_range.start.byte >= start_index.byte {
+                symbol.src_range.start.byte = symbol.src_range.start.byte + diff.byte;
+                symbol.src_range.end.byte = symbol.src_range.end.byte + diff.byte;
+            }
+            if symbol.src_range.start.char >= start_index.char {
+                symbol.src_range.start.char = symbol.src_range.start.char + diff.char;
+                symbol.src_range.end.char = symbol.src_range.end.char + diff.char;
             }
         }
     }
@@ -344,7 +348,7 @@ fn mark_jlists(tree: &Tree, query_cursor: &mut QueryCursor, tla_lines: &mut [Tla
 #[derive(Debug)]
 struct Symbol {
     diff: CharDiff,
-    src_byte_range: Range<ByteQuantity>,
+    src_range: Range<StrElementQuantity>,
     target: String,
 }
 
@@ -364,12 +368,17 @@ fn mark_symbols(tree: &Tree, cursor: &mut QueryCursor, tla_lines: &mut [TlaLine]
         let end_position = capture.node.end_position();
         assert!(start_position.row == end_position.row);
         let line = &mut tla_lines[start_position.row];
-        let src_byte_range = ByteQuantity(start_position.column)..ByteQuantity(end_position.column);
-        let src_symbol = &line.text[ByteQuantity::as_range(&src_byte_range)];
+        let src_range =
+            StrElementQuantity::from_byte_index(&ByteQuantity(start_position.column), &line.text)
+                ..StrElementQuantity::from_byte_index(
+                    &ByteQuantity(end_position.column),
+                    &line.text,
+                );
+        let src_symbol = &line.text[StrElementQuantity::as_byte_range(&src_range)];
         let target = mapping.target_symbol(mode).to_string();
         line.symbols.push(Symbol {
             diff: mapping.chars_added(mode, src_symbol),
-            src_byte_range,
+            src_range,
             target,
         });
     }
@@ -380,14 +389,10 @@ fn replace_symbols(tla_lines: &mut [TlaLine]) {
         let (prefix, suffix) = tla_lines.split_at_mut(line_number + 1);
         let line = &mut prefix[line_number];
         while let Some(symbol) = line.symbols.pop() {
-            let symbol_start_index =
-                StrElementQuantity::from_byte_index(&symbol.src_byte_range.start, &line.text);
-            line.text.replace_range(
-                ByteQuantity::as_range(&symbol.src_byte_range),
-                &symbol.target,
-            );
-            line.shift_jlists(&symbol.diff, &symbol_start_index.char);
-            fix_alignment(line, suffix, &symbol.diff, &symbol_start_index);
+            line.text
+                .replace_range(StrElementQuantity::as_byte_range(&symbol.src_range), &symbol.target);
+            line.shift_jlists(&symbol.diff, &symbol.src_range.start.char);
+            fix_alignment(line, suffix, &symbol.diff, &symbol.src_range.start);
         }
     }
 }
@@ -452,19 +457,18 @@ fn pad(
         let spaces_to_remove = CharQuantity::min(diff.magnitude(), first_symbol_index);
         let bytes_to_remove = ByteQuantity::from_char_index(&spaces_to_remove, &line.text);
         line.text.drain(bytes_to_remove.range_to());
-        let char_diff = mod_index.char - spaces_to_remove;
-        let pad_diff = mod_index.byte - bytes_to_remove;
-        line.shift_jlists(&char_diff, &mod_index.char);
-        line.shift_symbols(&pad_diff, &mod_index.byte);
-        char_diff
+        let diff = StrElementDiff { char: mod_index.char - spaces_to_remove, byte: mod_index.byte - bytes_to_remove };
+        line.shift_jlists(&diff.char, &mod_index.char);
+        line.shift_symbols(&diff, &mod_index);
+        diff.char
     } else {
         let spaces_to_add = diff.magnitude();
         line.text.insert_str(0, &spaces_to_add.repeat(" "));
         let spaces_added_in_bytes = ByteQuantity::from_char_index(&spaces_to_add, &line.text);
-        let pad_diff = spaces_added_in_bytes - mod_index.byte;
-        line.shift_jlists(&diff, &mod_index.char);
-        line.shift_symbols(&pad_diff, &mod_index.byte);
-        diff
+        let diff = StrElementDiff { char: diff, byte: spaces_added_in_bytes - mod_index.byte };
+        line.shift_jlists(&diff.char, &mod_index.char);
+        line.shift_symbols(&diff, &mod_index);
+        diff.char
     }
 }
 

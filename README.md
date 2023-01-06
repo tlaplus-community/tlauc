@@ -32,7 +32,7 @@ For an optimal TLA⁺ Unicode experience you'll want a monospace font that rende
 
 This crate contains both a library and its command line wrapper.
 
-To get the command line tool; either download it directly from [a release](https://github.com/tlaplus-community/tlauc/releases/latest) or install it with `cargo`:
+To get the command line tool, either download it directly from [a release](https://github.com/tlaplus-community/tlauc/releases/latest) or install it with `cargo`:
 1. Install rust: https://www.rust-lang.org/tools/install
 1. Run `cargo install tlauc`
 1. Ensure the [cargo installation directory](https://doc.rust-lang.org/cargo/commands/cargo-install.html#description) is on your path
@@ -245,7 +245,7 @@ The block comment edge case has not been observed in the wild and so is not yet 
 
 ## Prior Art
 
-[Ron Pressler](https://pron.github.io/) did some work in early 2017 trying to add Unicode support to SANY.
+[Ron Pressler](https://pron.github.io/) did [a lot of work](https://github.com/pron/tlaplus/commits/unicode-presentation-2) in early 2017 trying to add Unicode support to SANY and the TLA⁺ Toolbox, including replacing ASCII symbols with Unicode as the user types.
 He also wrote [a similar Unicode conversion tool](https://github.com/pron/tlaplus/tree/unicode-presentation-2/tlatools/src/tla2unicode) in Java, which faced many of the same challenges around jlist alignment.
 Unfortunately none of this work was upstreamed.
 
