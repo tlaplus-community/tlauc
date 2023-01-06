@@ -389,8 +389,10 @@ fn replace_symbols(tla_lines: &mut [TlaLine]) {
         let (prefix, suffix) = tla_lines.split_at_mut(line_number + 1);
         let line = &mut prefix[line_number];
         while let Some(symbol) = line.symbols.pop() {
-            line.text
-                .replace_range(StrElementQuantity::as_byte_range(&symbol.src_range), &symbol.target);
+            line.text.replace_range(
+                StrElementQuantity::as_byte_range(&symbol.src_range),
+                &symbol.target,
+            );
             line.shift_jlists(&symbol.diff, &symbol.src_range.start.char);
             fix_alignment(line, suffix, &symbol.diff, &symbol.src_range.start);
         }
@@ -457,7 +459,10 @@ fn pad(
         let spaces_to_remove = CharQuantity::min(diff.magnitude(), first_symbol_index);
         let bytes_to_remove = ByteQuantity::from_char_index(&spaces_to_remove, &line.text);
         line.text.drain(bytes_to_remove.range_to());
-        let diff = StrElementDiff { char: mod_index.char - spaces_to_remove, byte: mod_index.byte - bytes_to_remove };
+        let diff = StrElementDiff {
+            char: mod_index.char - spaces_to_remove,
+            byte: mod_index.byte - bytes_to_remove,
+        };
         line.shift_jlists(&diff.char, &mod_index.char);
         line.shift_symbols(&diff, &mod_index);
         diff.char
@@ -465,7 +470,10 @@ fn pad(
         let spaces_to_add = diff.magnitude();
         line.text.insert_str(0, &spaces_to_add.repeat(" "));
         let spaces_added_in_bytes = ByteQuantity::from_char_index(&spaces_to_add, &line.text);
-        let diff = StrElementDiff { char: diff, byte: spaces_added_in_bytes - mod_index.byte };
+        let diff = StrElementDiff {
+            char: diff,
+            byte: spaces_added_in_bytes - mod_index.byte,
+        };
         line.shift_jlists(&diff.char, &mod_index.char);
         line.shift_symbols(&diff, &mod_index);
         diff.char
