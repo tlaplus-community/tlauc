@@ -33,10 +33,7 @@ mod corpus_tests {
     fn roundtrip_all_example_specs() {
         let start = Instant::now();
         let skip: Vec<&str> = vec![
-            // Remove once this PR goes through: https://github.com/tlaplus/Examples/pull/55
-            "Reals.tla",
-            "Naturals.tla",
-            "SimpleRegular.tla",
+            "SomeSpecName.tla"
         ];
         println!("SKIPPING {:?}", skip);
         let skip: Vec<&OsStr> = skip.iter().map(|s| OsStr::new(s)).collect();
