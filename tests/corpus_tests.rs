@@ -32,9 +32,7 @@ mod corpus_tests {
     #[test]
     fn roundtrip_all_example_specs() {
         let start = Instant::now();
-        let skip: Vec<&str> = vec![
-            "SomeSpecName.tla"
-        ];
+        let skip: Vec<&str> = vec!["SomeSpecName.tla"];
         println!("SKIPPING {:?}", skip);
         let skip: Vec<&OsStr> = skip.iter().map(|s| OsStr::new(s)).collect();
         let paths: Vec<PathBuf> = glob("tests/corpus/**/*.tla")
