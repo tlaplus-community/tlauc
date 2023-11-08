@@ -553,8 +553,15 @@ mod tests {
     fn unwrap_conversion(input: Result<String, TlaError>) -> String {
         match input {
             Ok(converted) => converted,
-            Err(TlaError::InputFileParseError{parse_tree, first_error_line}) => {
-                panic!("{}\n{}", first_error_line.unwrap_or(0), parse_tree.root_node().to_sexp())
+            Err(TlaError::InputFileParseError {
+                parse_tree,
+                first_error_line,
+            }) => {
+                panic!(
+                    "{}\n{}",
+                    first_error_line.unwrap_or(0),
+                    parse_tree.root_node().to_sexp()
+                )
             }
             Err(TlaError::OutputFileParseError {
                 output_tree,
