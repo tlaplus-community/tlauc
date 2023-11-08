@@ -77,7 +77,12 @@ fn convert(config: &Config, mode: Mode) -> Result<()> {
             output_file.write_all(output.as_bytes()).context(format!("Failed to write to output file [{}]", &config.output))?;
             Ok(())
         },
-        Err(TlaError::InputFileParseError(_)) => Err(anyhow!("Failed to correctly parse input TLA⁺ file; use --force flag to bypass this check.")),
+        Err(TlaError::InputFileParseError { first_error_line, .. }) => {
+            let line_msg = first_error_line.map_or(
+                "Could not identify line of first syntax error.".to_string(),
+                |line| format!("First syntax error might occur on line {}.", line));
+            Err(anyhow!("Failed to correctly parse input TLA⁺ file; use --force flag to bypass this check.\n".to_string() + &line_msg))
+        }
         Err(TlaError::OutputFileParseError{..}) => Err(anyhow!("Failed to correctly parse converted TLA⁺ output; this is a bug, please report it to the maintainer! Use --force to bypass this check (not recommended).")),
         Err(TlaError::InvalidTranslationError { input_tree: _, output_tree: _, output: _, first_diff }) => {
             let err_msg = "Converted TLA⁺ parse tree differs from original; this is a bug, please report it to the maintainer! Use --force to bypass this check (not recommended).";

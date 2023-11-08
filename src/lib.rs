@@ -3,7 +3,7 @@ use crate::strmeasure::*;
 
 use serde::{Deserialize, Deserializer};
 use std::ops::Range;
-use tree_sitter::{Parser, Query, QueryCursor, Tree, TreeCursor};
+use tree_sitter::{Node, Parser, Query, QueryCursor, Tree, TreeCursor};
 
 pub enum Mode {
     AsciiToUnicode,
@@ -12,7 +12,10 @@ pub enum Mode {
 
 #[derive(Debug)]
 pub enum TlaError {
-    InputFileParseError(Tree),
+    InputFileParseError {
+        parse_tree: Tree,
+        first_error_line: Option<usize>,
+    },
     OutputFileParseError {
         output_tree: Tree,
         output: String,
@@ -35,7 +38,12 @@ pub fn rewrite(input: &str, mode: &Mode, force: bool) -> Result<String, TlaError
     // Parse input TLA⁺ file and construct data structures to hold information about it
     let input_tree = parser.parse(input, None).unwrap();
     if !force && input_tree.root_node().has_error() {
-        return Err(TlaError::InputFileParseError(input_tree));
+        let first_error_line =
+            find_first_error_line(&input_tree).map_or_else(|e| Some(e), |_| None);
+        return Err(TlaError::InputFileParseError {
+            parse_tree: input_tree,
+            first_error_line,
+        });
     }
 
     let mut tla_lines = TlaLine::construct_from(input);
@@ -71,6 +79,41 @@ pub fn rewrite(input: &str, mode: &Mode, force: bool) -> Result<String, TlaError
     }
 
     Ok(output)
+}
+
+fn find_first_error_line(tree: &Tree) -> Result<(), usize> {
+    traverse_parse_tree(tree, |n| {
+        if n.is_error() || n.is_missing() {
+            Err(n.start_position().row + 1)
+        } else {
+            Ok(())
+        }
+    })
+}
+
+fn traverse_parse_tree<T>(tree: &Tree, m: fn(Node) -> Result<(), T>) -> Result<(), T> {
+    let mut cursor: TreeCursor = tree.walk();
+    loop {
+        // Every time a new node is found the control flow passes here
+        m(cursor.node())?;
+        // Descend as far as possible
+        if !cursor.goto_first_child() {
+            loop {
+                // Attempt to go to sibling
+                if cursor.goto_next_sibling() {
+                    // If sibling exists, break out into descent loop
+                    break;
+                } else {
+                    // If sibling does not exist, go to parent, then
+                    // parent's sibling in next loop iteration
+                    if !cursor.goto_parent() {
+                        // If parent does not exist, we are done
+                        return Ok(());
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn compare_parse_trees(input_tree: &Tree, output_tree: &Tree) -> Result<(), String> {
@@ -510,8 +553,8 @@ mod tests {
     fn unwrap_conversion(input: Result<String, TlaError>) -> String {
         match input {
             Ok(converted) => converted,
-            Err(TlaError::InputFileParseError(tree)) => {
-                panic!("{}", tree.root_node().to_sexp())
+            Err(TlaError::InputFileParseError{parse_tree, first_error_line}) => {
+                panic!("{}\n{}", first_error_line.unwrap_or(0), parse_tree.root_node().to_sexp())
             }
             Err(TlaError::OutputFileParseError {
                 output_tree,
