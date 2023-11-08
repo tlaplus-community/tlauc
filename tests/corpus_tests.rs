@@ -11,7 +11,7 @@ mod corpus_tests {
     fn unwrap_conversion(input: Result<String, TlaError>, path: &PathBuf) -> String {
         match input {
             Ok(converted) => converted,
-            Err(TlaError::InputFileParseError(_)) => {
+            Err(TlaError::InputFileParseError { .. }) => {
                 panic!("Failed to parse input file [{:?}]", path)
             }
             Err(TlaError::OutputFileParseError { .. }) => {
