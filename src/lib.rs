@@ -81,7 +81,7 @@ pub fn rewrite(input: &str, mode: &Mode, force: bool) -> Result<String, TlaError
 }
 
 fn find_error_lines(tree: &Tree) -> Vec<usize> {
-    let mut error_lines : Vec<usize> = vec![];
+    let mut error_lines: Vec<usize> = vec![];
     traverse_parse_tree(tree, |n| {
         if n.is_error() || n.is_missing() {
             error_lines.push(n.start_position().row + 1);
@@ -90,7 +90,10 @@ fn find_error_lines(tree: &Tree) -> Vec<usize> {
     error_lines
 }
 
-fn traverse_parse_tree<F>(tree: &Tree, mut visit: F) where F: FnMut(Node) {
+fn traverse_parse_tree<F>(tree: &Tree, mut visit: F)
+where
+    F: FnMut(Node),
+{
     let mut cursor: TreeCursor = tree.walk();
     loop {
         // Every time a new node is found the control flow passes here
@@ -556,11 +559,7 @@ mod tests {
                 parse_tree,
                 error_lines,
             }) => {
-                panic!(
-                    "{:?}\n{}",
-                    error_lines,
-                    parse_tree.root_node().to_sexp()
-                )
+                panic!("{:?}\n{}", error_lines, parse_tree.root_node().to_sexp())
             }
             Err(TlaError::OutputFileParseError {
                 output_tree,
