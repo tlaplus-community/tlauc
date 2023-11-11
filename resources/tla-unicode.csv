@@ -14,7 +14,7 @@ case_arrow,->,→,U+2192
 label_as,::,∷,U+2237
 lnot,~;\lnot;\neg,¬,U+00AC
 always,[],□,U+25A1
-eventually,<>,⋄,U+22C4
+eventually,<>,◇,U+25C7
 implies,=>,⇒,U+21D2
 plus_arrow,-+->,⇸,U+21F8
 equiv,\equiv,≡,U+2261
