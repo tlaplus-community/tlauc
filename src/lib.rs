@@ -14,7 +14,7 @@ pub enum Mode {
 pub enum TlaError {
     InputFileParseError {
         parse_tree: Tree,
-        first_error_line: Option<usize>,
+        error_lines: Vec<usize>,
     },
     OutputFileParseError {
         output_tree: Tree,
@@ -38,11 +38,10 @@ pub fn rewrite(input: &str, mode: &Mode, force: bool) -> Result<String, TlaError
     // Parse input TLA⁺ file and construct data structures to hold information about it
     let input_tree = parser.parse(input, None).unwrap();
     if !force && input_tree.root_node().has_error() {
-        let first_error_line =
-            find_first_error_line(&input_tree).map_or_else(|e| Some(e), |_| None);
+        let error_lines = find_error_lines(&input_tree);
         return Err(TlaError::InputFileParseError {
             parse_tree: input_tree,
-            first_error_line,
+            error_lines,
         });
     }
 
@@ -81,21 +80,24 @@ pub fn rewrite(input: &str, mode: &Mode, force: bool) -> Result<String, TlaError
     Ok(output)
 }
 
-fn find_first_error_line(tree: &Tree) -> Result<(), usize> {
+fn find_error_lines(tree: &Tree) -> Vec<usize> {
+    let mut error_lines: Vec<usize> = vec![];
     traverse_parse_tree(tree, |n| {
         if n.is_error() || n.is_missing() {
-            Err(n.start_position().row + 1)
-        } else {
-            Ok(())
+            error_lines.push(n.start_position().row + 1);
         }
-    })
+    });
+    error_lines
 }
 
-fn traverse_parse_tree<T>(tree: &Tree, m: fn(Node) -> Result<(), T>) -> Result<(), T> {
+fn traverse_parse_tree<F>(tree: &Tree, mut visit: F)
+where
+    F: FnMut(Node),
+{
     let mut cursor: TreeCursor = tree.walk();
     loop {
         // Every time a new node is found the control flow passes here
-        m(cursor.node())?;
+        visit(cursor.node());
         // Descend as far as possible
         if !cursor.goto_first_child() {
             loop {
@@ -108,7 +110,7 @@ fn traverse_parse_tree<T>(tree: &Tree, m: fn(Node) -> Result<(), T>) -> Result<(
                     // parent's sibling in next loop iteration
                     if !cursor.goto_parent() {
                         // If parent does not exist, we are done
-                        return Ok(());
+                        return;
                     }
                 }
             }
@@ -555,13 +557,9 @@ mod tests {
             Ok(converted) => converted,
             Err(TlaError::InputFileParseError {
                 parse_tree,
-                first_error_line,
+                error_lines,
             }) => {
-                panic!(
-                    "{}\n{}",
-                    first_error_line.unwrap_or(0),
-                    parse_tree.root_node().to_sexp()
-                )
+                panic!("{:?}\n{}", error_lines, parse_tree.root_node().to_sexp())
             }
             Err(TlaError::OutputFileParseError {
                 output_tree,
