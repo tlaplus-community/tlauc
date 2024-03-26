@@ -8,10 +8,8 @@ jobs:
     steps:
       - name: Clone repo
         uses: actions/checkout@v4
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
+      - name: Use stable rust toolchain
+        run: rustup default stable
       - name: Publish
         run: cargo publish --token ${{secrets.CRATES_AUTH_TOKEN}}
   github-release-binaries:
@@ -30,10 +28,8 @@ jobs:
     steps:
       - name: Clone repo
         uses: actions/checkout@v4
-      - name: Install Rust
-        uses: actions-rs/toolchain@v2
-        with:
-          toolchain: stable
+      - name: Use stable rust toolchain
+        run: rustup default stable
       - name: Build
         run: cargo build --release
       - name: Package Binary
