@@ -7,16 +7,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Clone repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Install Rust
-        uses: actions-rs/toolchain@v1
+        uses: actions-rs/toolchain@v2
         with:
           toolchain: stable
       - name: Publish
-        uses: actions-rs/cargo@v1
-        with:
-          command: publish
-          args: --token ${{secrets.CRATES_AUTH_TOKEN}}
+        run: cargo publish --token ${{secrets.CRATES_AUTH_TOKEN}}
   github-release-binaries:
     runs-on: ${{ matrix.os }}
     strategy:
@@ -32,16 +29,13 @@ jobs:
       fail-fast: false
     steps:
       - name: Clone repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Install Rust
-        uses: actions-rs/toolchain@v1
+        uses: actions-rs/toolchain@v2
         with:
           toolchain: stable
       - name: Build
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --release
+        run: cargo build --release
       - name: Package Binary
         if: matrix.os == 'windows-latest'
         shell: pwsh

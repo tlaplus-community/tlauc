@@ -15,24 +15,17 @@ jobs:
       fail-fast: false
     steps:
       - name: Clone repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: recursive
       - name: Install Rust
-        uses: actions-rs/toolchain@v1
+        uses: actions-rs/toolchain@v2
         with:
           toolchain: stable
       - name: Build
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
+        run: cargo build
       - name: Check Formatting
-        uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --check
+        run: cargo fmt --check
       - name: Test
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: -- --nocapture
+        run: cargo test -- --nocapture
+

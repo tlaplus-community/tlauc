@@ -2,7 +2,7 @@ use anyhow::{anyhow, Context, Result};
 use clap::Parser;
 use std::fs::File;
 use std::io::{Read, Write};
-use std::path::{PathBuf, Path};
+use std::path::{Path, PathBuf};
 use tlauc::{rewrite, Mode, TlaError};
 
 #[derive(Parser)]
@@ -36,12 +36,20 @@ struct Args {
 
 fn main() -> Result<()> {
     let args = Args::parse();
-    let output_path = if let Some(output_path) = args.output {output_path} else {args.input.clone()};
+    let output_path = if let Some(output_path) = args.output {
+        output_path
+    } else {
+        args.input.clone()
+    };
     convert(
         args.input.as_path(),
         output_path.as_path(),
-        if args.ascii {Mode::UnicodeToAscii} else {Mode::AsciiToUnicode},
-        args.force
+        if args.ascii {
+            Mode::UnicodeToAscii
+        } else {
+            Mode::AsciiToUnicode
+        },
+        args.force,
     )
 }
 
