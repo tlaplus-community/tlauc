@@ -1,37 +1,22 @@
 use anyhow::{anyhow, Context, Result};
-use clap::{Parser, Subcommand};
+use clap::Parser;
 use std::fs::File;
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tlauc::{rewrite, Mode, TlaError};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    #[command(subcommand)]
-    action: Action,
-}
-
-#[derive(Subcommand)]
-enum Action {
-    #[command(about = "Convert symbols in a TLA⁺ file from ASCII to Unicode")]
-    Unicode(Config),
-
-    #[command(about = "Convert symbols in a TLA⁺ file from Unicode to ASCII")]
-    Ascii(Config),
-}
-
-#[derive(Parser)]
-struct Config {
-    #[arg(short, long, help = "Path to TLA⁺ file to read as input")]
-    input: String,
+    #[arg(help = "Path to TLA⁺ file to convert")]
+    input: PathBuf,
 
     #[arg(
         short,
         long,
-        help = "Path to file to use as output; will fail if file already exists unless using --overwrite"
+        help = "Optional path to output; will overwrite input file by default"
     )]
-    output: String,
+    output: Option<PathBuf>,
 
     #[arg(
         short,
@@ -44,37 +29,44 @@ struct Config {
     #[arg(
         long,
         default_value_t = false,
-        help = "Whether to overwrite any file existing at the output path; also set by --force"
+        help = "Convert the TLA⁺ file to ASCII instead of Unicode"
     )]
-    overwrite: bool,
+    ascii: bool,
 }
 
 fn main() -> Result<()> {
     let args = Args::parse();
-    match args.action {
-        Action::Unicode(config) => convert(&config, Mode::AsciiToUnicode),
-        Action::Ascii(config) => convert(&config, Mode::UnicodeToAscii),
-    }
+    let output_path = if let Some(output_path) = args.output {
+        output_path
+    } else {
+        args.input.clone()
+    };
+    convert(
+        args.input.as_path(),
+        output_path.as_path(),
+        if args.ascii {
+            Mode::UnicodeToAscii
+        } else {
+            Mode::AsciiToUnicode
+        },
+        args.force,
+    )
 }
 
-fn convert(config: &Config, mode: Mode) -> Result<()> {
+fn convert(input_path: &Path, output_path: &Path, mode: Mode, force: bool) -> Result<()> {
     let mut input = String::new();
     {
-        let mut input_file = File::open(&config.input)
-            .context(format!("Failed to open input file [{}]", &config.input))?;
+        let mut input_file = File::open(input_path)
+            .context(format!("Failed to open input file [{:?}]", input_path))?;
         input_file
             .read_to_string(&mut input)
-            .context(format!("Failed to read input file [{}]", &config.input))?;
+            .context(format!("Failed to read input file [{:?}]", input_path))?;
     }
 
-    if Path::new(&config.output).exists() && !(config.overwrite || config.force) {
-        return Err(anyhow!("File already exists at output file location [{}]; use --overwrite flag to overwrite it", &config.output));
-    }
-
-    let mut output_file = File::create(&config.output)?;
-    match rewrite(&input, &mode, config.force) {
+    let mut output_file = File::create(output_path)?;
+    match rewrite(&input, &mode, force) {
         Ok(output) => {
-            output_file.write_all(output.as_bytes()).context(format!("Failed to write to output file [{}]", &config.output))?;
+            output_file.write_all(output.as_bytes()).context(format!("Failed to write to output file [{:?}]", output_path))?;
             Ok(())
         },
         Err(TlaError::InputFileParseError { error_lines, .. }) => {
