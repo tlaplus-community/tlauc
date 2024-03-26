@@ -19,7 +19,7 @@ jobs:
         with:
           submodules: true
       - name: Install Rust
-        uses: actions-rs/toolchain@v2
+        uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
       - name: Build

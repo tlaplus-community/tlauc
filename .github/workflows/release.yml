@@ -9,7 +9,7 @@ jobs:
       - name: Clone repo
         uses: actions/checkout@v4
       - name: Install Rust
-        uses: actions-rs/toolchain@v2
+        uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
       - name: Publish
