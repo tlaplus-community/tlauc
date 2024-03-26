@@ -37,17 +37,20 @@ To get the command line tool, either download it directly from [a release](https
 1. Run `cargo install tlauc`
 1. Ensure the [cargo installation directory](https://doc.rust-lang.org/cargo/commands/cargo-install.html#description) is on your path
 
-From the command line, convert a TLA⁺ file from ASCII to Unicode as follows:
+From the command line, convert a TLA⁺ file from ASCII to Unicode in place as follows:
 ```sh
-tlauc unicode --input Ascii.tla --output Unicode.tla
+tlauc Ascii.tla
 ```
-Convert from Unicode to ASCII:
+Convert from Unicode to ASCII in place:
 ```sh
-tlauc ascii --input Unicode.tla --output Ascii.tla
+tlauc Unicode.tla --ascii
 ```
-By default, the program will fail if a file exists at the output location; override this behavior with the `--overwrite` flag.
-There are also several safety checks performed during the translation process, like that the input spec parses correctly and that the output spec has the same parse tree as the input spec.
-You can override these safety checks with the `-f` or `--force` flag, which also sets the `--overwrite` flag.
+To output to a separate file instead of overwriting the input, use the `--output` or `-o` parameter with a filepath.
+There are several safety checks performed during the translation process, like that the input spec parses correctly and that the output spec has the same parse tree as the input spec.
+You can override these safety checks with the `--force` or `-f` flag.
+
+If parse errors exist their locations will be output as a best-effort list of line numbers.
+Unfortunately tree-sitter does not expose more advanced parse error reporting at this time.
 
 To consume the library, add [the tlauc package](https://crates.io/crates/tlauc) as a dependency of your project then use it as follows:
 ```rs
