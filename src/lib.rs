@@ -31,7 +31,7 @@ pub enum TlaError {
 pub fn rewrite(input: &str, mode: &Mode, force: bool) -> Result<String, TlaError> {
     let mut parser = Parser::new();
     parser
-        .set_language(tree_sitter_tlaplus::language())
+        .set_language(&tree_sitter_tlaplus::language())
         .expect("Error loading TLA⁺ grammar");
     let mut cursor = QueryCursor::new();
 
@@ -313,7 +313,7 @@ struct InfixOp {
 impl JList {
     fn query() -> Query {
         Query::new(
-            tree_sitter_tlaplus::language(),
+            &tree_sitter_tlaplus::language(),
             "[(conj_list) (disj_list)] @jlist",
         )
         .unwrap()
@@ -321,7 +321,7 @@ impl JList {
 
     fn terminating_infix_op_query() -> Query {
         Query::new(
-            tree_sitter_tlaplus::language(),
+            &tree_sitter_tlaplus::language(),
             "(bound_infix_op lhs: [(conj_list) (disj_list)]) @capture",
         )
         .unwrap()
@@ -404,7 +404,7 @@ fn mark_symbols(tree: &Tree, cursor: &mut QueryCursor, tla_lines: &mut [TlaLine]
         .map(|s| s.source_query(mode))
         .collect::<Vec<String>>()
         .join("");
-    let query = Query::new(tree_sitter_tlaplus::language(), queries).unwrap();
+    let query = Query::new(&tree_sitter_tlaplus::language(), queries).unwrap();
 
     for capture in cursor.matches(&query, tree.root_node(), "".as_bytes()) {
         let capture = capture.captures[0];
@@ -533,7 +533,7 @@ mod tests {
     fn check_ascii_replaced(text: &str) {
         let mut parser = Parser::new();
         parser
-            .set_language(tree_sitter_tlaplus::language())
+            .set_language(&tree_sitter_tlaplus::language())
             .unwrap();
         let tree = parser.parse(&text, None).unwrap();
         assert!(!tree.root_node().has_error());
@@ -543,7 +543,7 @@ mod tests {
             .map(|s| s.ascii_query())
             .collect::<Vec<String>>()
             .join("");
-        let query = Query::new(tree_sitter_tlaplus::language(), &queries).unwrap();
+        let query = Query::new(&tree_sitter_tlaplus::language(), &queries).unwrap();
         assert_eq!(
             0,
             cursor

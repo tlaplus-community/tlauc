@@ -1,25 +1,25 @@
 [package]
 name = "tlauc"
 description = "Rewrites TLA⁺ specs to use Unicode symbols instead of ASCII, and vice-versa"
-version = "0.2.0"
+version = "1.0.0"
 authors = ["Andrew Helwer <2n8rn1w1f@mozmail.com>"]
 repository = "https://github.com/tlaplus-community/tlauc"
 license = "MIT"
 readme = "README.md"
 keywords = ["tla+", "tlaplus", "pluscal", "unicode"]
 categories = ["command-line-utilities", "text-editors"]
-edition = "2018"
+edition = "2021"
 exclude = ["tests", ".github", ".gitignore", ".gitmodules"]
 
 [dependencies]
-anyhow = "1.0.75"
-clap = { version = "4.0.32", features = ["derive"] }
+anyhow = "1.0.81"
+clap = { version = "4.5.4", features = ["derive"] }
 csv = "1.3.0"
-serde = { version = "1.0.192", features = ["derive"] }
-tree-sitter = "0.20.10"
-tree-sitter-tlaplus = "1.0.6"
+serde = { version = "1.0.197", features = ["derive"] }
+tree-sitter = "0.22.5"
+tree-sitter-tlaplus = "1.2.8"
 
 [dev-dependencies]
-glob = "0.3.0"
-rayon = "1.6.1"
+glob = "0.3.1"
+rayon = "1.10.0"
 
