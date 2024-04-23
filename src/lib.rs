@@ -804,6 +804,23 @@ op == /\ A
         );
     }
 
+    // See https://github.com/tlaplus-community/tlauc/issues/11
+    // Test translation of number sets in their three forms:
+    //  1. As an expression
+    //  2. As the left-hand-side of an operator definition
+    //  3. As a reference to an imported module
+    #[test]
+    fn test_translate_number_set() {
+        run_roundtrip_test(
+            r#"
+---- MODULE Test ----
+Nat == Nat \union A!B!Nat
+Int == Int \union A!B!Int
+Real == Real \union A!B!Real
+===="#,
+        );
+    }
+
     // https://github.com/tlaplus-community/tlauc/issues/1
     #[ignore]
     #[test]
