@@ -107,4 +107,20 @@ mod tests {
         let actual = std::fs::read_to_string(&output_path).unwrap();
         assert_eq!(expected, actual);
     }
+
+    #[test]
+    fn test_blank_input_file() {
+        let project_root = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+        let input_path = PathBuf::from(project_root)
+            .join("tests")
+            .join("BlankFile.tla");
+        let output_path = input_path.clone();
+        let result: Result<()> = convert(
+            input_path.as_path(),
+            output_path.as_path(),
+            tlauc::Mode::AsciiToUnicode,
+            false,
+        );
+        assert!(result.is_err());
+    }
 }
