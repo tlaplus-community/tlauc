@@ -63,9 +63,9 @@ fn convert(input_path: &Path, output_path: &Path, mode: Mode, force: bool) -> Re
             .context(format!("Failed to read input file [{:?}]", input_path))?;
     }
 
-    let mut output_file = File::create(output_path)?;
     match rewrite(&input, &mode, force) {
         Ok(output) => {
+            let mut output_file = File::create(output_path)?;
             output_file.write_all(output.as_bytes()).context(format!("Failed to write to output file [{:?}]", output_path))?;
             Ok(())
         },
@@ -81,5 +81,30 @@ fn convert(input_path: &Path, output_path: &Path, mode: Mode, force: bool) -> Re
             let err_msg = "Converted TLA⁺ parse tree differs from original; this is a bug, please report it to the maintainer! Use --force to bypass this check (not recommended).";
             Err(anyhow!("{}\n{}", err_msg, first_diff))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    // https://github.com/tlaplus-community/tlauc/issues/14
+    fn test_input_file_unchanged_on_parse_failure() {
+        let project_root = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+        let input_path = PathBuf::from(project_root)
+            .join("tests")
+            .join("InvalidSyntax.tla");
+        let expected = std::fs::read_to_string(&input_path).unwrap();
+        let output_path = input_path.clone();
+        let result: Result<()> = convert(
+            input_path.as_path(),
+            output_path.as_path(),
+            tlauc::Mode::AsciiToUnicode,
+            false,
+        );
+        assert!(result.is_err());
+        let actual = std::fs::read_to_string(&output_path).unwrap();
+        assert_eq!(expected, actual);
     }
 }
