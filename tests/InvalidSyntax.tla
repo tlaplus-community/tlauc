@@ -1,0 +1,4 @@
+---- MODULE test ----
+foo == invalid,
+====
+
