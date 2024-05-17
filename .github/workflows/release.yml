@@ -3,16 +3,7 @@ on:
   release:
     types: [created]
 jobs:
-  publish-rust-crate:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Clone repo
-        uses: actions/checkout@v4
-      - name: Use stable rust toolchain
-        run: rustup default stable
-      - name: Publish
-        run: cargo publish --token ${{secrets.CRATES_AUTH_TOKEN}}
-  github-release-binaries:
+  release:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -24,10 +15,26 @@ jobs:
             binname: tlauc-macos.tar.gz
           - os: windows-latest
             binname: tlauc-windows.zip
-      fail-fast: false
+      fail-fast: true
     steps:
       - name: Clone repo
         uses: actions/checkout@v4
+      - name: Set package version
+        if: matrix.os != 'windows-latest'
+        run: |
+          sed -i -e "s/\"0\.0\.0\"/\"${{ github.ref_name }}\"/" Cargo.toml
+          cat Cargo.toml
+      - name: Set package version
+        if: matrix.os == 'windows-latest'
+        run: |
+          function Convert-PackageFile {
+            param($path, $source, $target)
+            $packageFile = Get-Content -Path $path -Raw
+            $updatedPackageFile = $packageFile -replace [Regex]::Escape($source), $target
+            Set-Content -Path $path -Value $updatedPackageFile
+            $updatedPackageFile
+          }
+          Convert-PackageFile 'Cargo.toml' '"0.0.0"' """${{ github.ref_name }}"""
       - name: Use stable rust toolchain
         run: rustup default stable
       - name: Build
@@ -48,4 +55,7 @@ jobs:
           asset_path: ${{ matrix.binname }}
           asset_name: ${{ matrix.binname }}
           asset_content_type: application/gzip
+      - name: Publish Crate
+        if: matrix.os == 'ubuntu-latest'
+        run: cargo publish --token ${{secrets.CRATES_AUTH_TOKEN}}
 
