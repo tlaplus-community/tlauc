@@ -57,5 +57,5 @@ jobs:
           asset_content_type: application/gzip
       - name: Publish Crate
         if: matrix.os == 'ubuntu-latest'
-        run: cargo publish --token ${{secrets.CRATES_AUTH_TOKEN}}
+        run: cargo publish --token ${{secrets.CRATES_AUTH_TOKEN}} --allow-dirty
 
