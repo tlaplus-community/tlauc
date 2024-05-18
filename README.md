@@ -19,7 +19,7 @@ It consists of two crates: a library exposing this functionality (using [tree-si
 Use this tool to:
 * Create a nice-looking copy of your spec that is pleasant to read but can still be edited and meaningfully tracked by source control
 * Convert your existing ASCII specs to Unicode and use them with Unicode-aware tooling like [tla-web](https://github.com/will62794/tla-web) or TLC
-* Confidently write specs in Unicode with the [tlaplus-nvim-plugin](https://github.com/tlaplus-community/tlaplus-nvim-plugin) then output their ASCII equivalent to a temporary file for use with legacy non-Unicode-aware tooling
+* Confidently write specs in Unicode using [Neovim](https://github.com/tlaplus-community/tlaplus-nvim-plugin) or [Emacs](https://github.com/bugarela/tla-input) plugins then output their ASCII equivalent to a temporary file for use with legacy non-Unicode-aware tooling
 
 Note that GitHub itself uses the tree-sitter-tlaplus grammar for highlighting, so it supports Unicode TLA⁺ as shown in the highlighted code snippets here.
 SANY and TLC also now both support Unicode.
