@@ -30,6 +30,9 @@ pub enum TlaError {
 }
 
 pub fn rewrite(input: &str, mode: &Mode, force: bool) -> Result<String, TlaError> {
+    // if the input ends with '\n', we should put the '\n' back to output
+    let end_of_newline = input.chars().last().map_or(false, |x| x == '\n');
+
     let mut parser = Parser::new();
     parser
         .set_language(&tree_sitter_tlaplus::LANGUAGE.into())
@@ -53,6 +56,16 @@ pub fn rewrite(input: &str, mode: &Mode, force: bool) -> Result<String, TlaError
     mark_symbols(&input_tree, &mut cursor, &mut tla_lines, mode);
     //println!("{:#?}", tla_lines);
     replace_symbols(&mut tla_lines);
+
+    // push a empty tlaline,
+    // tla_lines...join("\n") will add a '\n' into end of the output
+    if end_of_newline {
+        tla_lines.push(TlaLine {
+            text: String::new(),
+            jlists: Vec::new(),
+            symbols: Vec::new(),
+        })
+    }
 
     // Ensure output parse tree is identical to input parse tree
     let output = tla_lines
