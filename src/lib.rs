@@ -57,11 +57,20 @@ pub fn rewrite(input: &str, mode: &Mode, force: bool) -> Result<String, TlaError
     //println!("{:#?}", tla_lines);
     replace_symbols(&mut tla_lines);
 
-    // push a empty tlaline,
-    // tla_lines...join("\n") will add a '\n' into end of the output
+    // push a empty TlaLine,
+    // tla_lines...join("\n") will add a '\n' into end of the output,
+    // the reason why we don't push '\n' into output string directly is
+    // that maybe cause a reallocation.
     if end_of_newline {
+        // if tla_lines is empty, we should set the text as "\n"
+        // because the join will not work in tla_lines.len < 2.
+        let text = if tla_lines.is_empty() {
+            "\n".to_string()
+        } else {
+            String::new()
+        };
         tla_lines.push(TlaLine {
-            text: String::new(),
+            text,
             jlists: Vec::new(),
             symbols: Vec::new(),
         })
@@ -445,6 +454,9 @@ fn mark_symbols(tree: &Tree, cursor: &mut QueryCursor, tla_lines: &mut [TlaLine]
 }
 
 fn replace_symbols(tla_lines: &mut [TlaLine]) {
+    if tla_lines.is_empty() {
+        return;
+    }
     for line_number in 0..tla_lines.len() - 1 {
         let (prefix, suffix) = tla_lines.split_at_mut(line_number + 1);
         let line = &mut prefix[line_number];
@@ -861,6 +873,46 @@ op == /\ A
 (******) \/ C
 (***) => D
 ===="#,
+        );
+    }
+
+    // Tests that file ends with newline(or without newline)
+    #[test]
+    fn test_empty_input() {
+        let input = "";
+        let output = rewrite(&input, &Mode::UnicodeToAscii, true);
+        assert_eq!(input, output.unwrap());
+        let output = rewrite(&input, &Mode::AsciiToUnicode, true);
+        assert_eq!(input, output.unwrap());
+    }
+
+    #[test]
+    fn test_single_newline() {
+        let input = "\n";
+        let output = rewrite(&input, &Mode::UnicodeToAscii, true);
+        assert_eq!(input, output.unwrap());
+        let output = rewrite(&input, &Mode::AsciiToUnicode, true);
+        assert_eq!(input, output.unwrap());
+    }
+
+    #[test]
+    fn test_normal_input_without_newline() {
+        run_roundtrip_test(
+            r#"
+---- MODULE Test ----
+op == 1
+===="#,
+        );
+    }
+
+    #[test]
+    fn test_normal_input_with_newline() {
+        run_roundtrip_test(
+            r#"
+---- MODULE Test ----
+op == 1
+====
+"#,
         );
     }
 }
