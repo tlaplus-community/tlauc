@@ -30,9 +30,6 @@ pub enum TlaError {
 }
 
 pub fn rewrite(input: &str, mode: &Mode, force: bool) -> Result<String, TlaError> {
-    // if the input ends with '\n', we should put the '\n' back to output
-    let end_of_newline = input.chars().last().map_or(false, |x| x == '\n');
-
     let mut parser = Parser::new();
     parser
         .set_language(&tree_sitter_tlaplus::LANGUAGE.into())
@@ -57,31 +54,15 @@ pub fn rewrite(input: &str, mode: &Mode, force: bool) -> Result<String, TlaError
     //println!("{:#?}", tla_lines);
     replace_symbols(&mut tla_lines);
 
-    // push a empty TlaLine,
-    // tla_lines...join("\n") will add a '\n' into end of the output,
-    // the reason why we don't push '\n' into output string directly is
-    // that maybe cause a reallocation.
-    if end_of_newline {
-        // if tla_lines is empty, we should set the text as "\n"
-        // because the join will not work in tla_lines.len < 2.
-        let text = if tla_lines.is_empty() {
-            "\n".to_string()
-        } else {
-            String::new()
-        };
-        tla_lines.push(TlaLine {
-            text,
-            jlists: Vec::new(),
-            symbols: Vec::new(),
-        })
-    }
+    // if the input ends with '\n', we should put the '\n' back to output
+    let extra_newline = input
+        .chars()
+        .last()
+        .map_or("", |x| if x == '\n' { "\n" } else { "" });
 
     // Ensure output parse tree is identical to input parse tree
-    let output = tla_lines
-        .iter()
-        .map(|l| l.text.as_ref())
-        .collect::<Vec<&str>>()
-        .join("\n");
+    let output = TlaLine::output_from_lines(&tla_lines, &extra_newline);
+
     let output_tree = parser.parse(&output, None).unwrap();
     if !force {
         if output_tree.root_node().has_error() {
@@ -298,6 +279,28 @@ impl TlaLine {
             .collect()
     }
 
+    // same as join("\n") + extra,
+    // but to avoid unnecessary the reallocation,
+    // ref: https://doc.rust-lang.org/src/alloc/slice.rs.html#787
+    fn output_from_lines(tla_lines: &Vec<Self>, extra: &str) -> String {
+        let mut iter = tla_lines.iter();
+        let first = match iter.next() {
+            Some(first) => first,
+            None => return extra.to_string(),
+        };
+        let text_size = tla_lines.iter().map(|v| v.text.len()).sum::<usize>();
+        // Note: tla_lines.len() > 0 is always true
+        let size = text_size + tla_lines.len() - 1 + extra.len();
+        let mut result = String::with_capacity(size);
+        result.push_str(&first.text);
+        for v in iter {
+            result.push('\n');
+            result.push_str(&v.text);
+        }
+        result.push_str(extra);
+        result
+    }
+
     fn shift_jlists(&mut self, &diff: &CharDiff, &start_index: &CharQuantity) {
         for jlist in &mut self.jlists {
             if jlist.column > start_index {
@@ -454,10 +457,7 @@ fn mark_symbols(tree: &Tree, cursor: &mut QueryCursor, tla_lines: &mut [TlaLine]
 }
 
 fn replace_symbols(tla_lines: &mut [TlaLine]) {
-    if tla_lines.is_empty() {
-        return;
-    }
-    for line_number in 0..tla_lines.len() - 1 {
+    for line_number in 0..tla_lines.len().saturating_add_signed(-1) {
         let (prefix, suffix) = tla_lines.split_at_mut(line_number + 1);
         let line = &mut prefix[line_number];
         while let Some(symbol) = line.symbols.pop() {
@@ -876,7 +876,7 @@ op == /\ A
         );
     }
 
-    // Tests that file ends with newline(or without newline)
+    // Tests that file ends with newline (or without newline)
     #[test]
     fn test_empty_input() {
         let input = "";
