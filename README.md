@@ -24,7 +24,7 @@ Use this tool to:
 Note that GitHub itself uses the tree-sitter-tlaplus grammar for highlighting, so it supports Unicode TLA⁺ as shown in the highlighted code snippets here.
 SANY and TLC also now both support Unicode.
 
-The symbol mapping can be found in the [`./resources/tla-unicode.csv`](./resources/tla-unicode.csv) file, taken from the [tlaplus-standard](https://github.com/tlaplus-community/tlaplus-standard) repo.
+The symbol mapping can be found in the [`./resources/tla-unicode.csv`](./resources/tla-unicode.csv) file, taken from the [TLA⁺ standard](https://github.com/tlaplus/rfcs/tree/2a772d9dd11acec5d7dedf30abfab91a49de48b8/accepted_rfcs/rfc5_unicode).
 The crate also provides programmatic access to these mappings.
 For an optimal TLA⁺ Unicode experience you'll want a monospace font that renders all these symbols in fixed width.
 
