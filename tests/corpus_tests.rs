@@ -53,9 +53,14 @@ mod corpus_tests {
                     .expect(&format!("Failed to read input file [{:?}]", path));
             }
 
-            let intermediate =
-                unwrap_conversion(rewrite(&input, &Mode::AsciiToUnicode, false), path);
-            unwrap_conversion(rewrite(&intermediate, &Mode::UnicodeToAscii, false), path);
+            let intermediate = unwrap_conversion(
+                rewrite(&input, &Mode::AsciiToUnicode, false, |_| true),
+                path,
+            );
+            unwrap_conversion(
+                rewrite(&intermediate, &Mode::UnicodeToAscii, false, |_| true),
+                path,
+            );
         });
 
         println!("Corpus tests took {} seconds", start.elapsed().as_secs());

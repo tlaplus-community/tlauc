@@ -45,7 +45,29 @@ Convert from Unicode to ASCII in place:
 ```sh
 tlauc Unicode.tla --ascii
 ```
-To output to a separate file instead of overwriting the input, use the `--output` or `-o` parameter with a filepath.
+To output to a separate file instead of overwriting the input, use the `--output` or `-o` parameter with a filepath:
+```sh
+tlauc Input.tla --output Output.tla
+```
+If you want to avoid translating particular symbols, specify them with the `--skip` parameter; this will skip translation in both directions for all aliases of the given symbol:
+```sh
+tlauc Input.tla --skip "<=" --skip "\\/"
+```
+There are also handy keywords to skip groups of symbols; the `numsets` keyword will avoid translating `Nat`, `Int`, and `Real` to `ℕ`, `ℤ`, and `ℝ`:
+```sh
+tlauc Input.tla --skip "numsets"
+```
+This is useful as [SANY does not yet define](https://github.com/tlaplus/tlaplus/issues/1020) these Unicode number sets in the standard modules.
+If you want the Unicode number sets to be successfully parsed by SANY, you'll have to manually add a definition like this near the top of your module:
+```tla
+LOCAL ℕ == Nat
+```
+The `contractions` keyword is also supported, which avoids translating Unicode symbols that are simple contractions of their constituent ASCII symbols: `∷`, `‥`, `…`, `≔`, `⩴`, `‖`, `‼`, and `⁇`.
+Skip keywords can be used alongside specific skip literals, as in:
+```sh
+tlauc Input.tla --skip "contractions" --skip "/\\" --skip "\\/" --skip "numsets"
+```
+
 There are several safety checks performed during the translation process, like that the input spec parses correctly and that the output spec has the same parse tree as the input spec.
 You can override these safety checks with the `--force` or `-f` flag.
 
@@ -71,7 +93,7 @@ IsTotallyOrdered(S) ==
     /\ Rotal(S)
 THEOREM RealsTotallyOrdered == IsTotallyOrdered(Real)
 ===="#;
-    println!("{}", rewrite(input, &Mode::AsciiToUnicode, false).unwrap());
+    println!("{}", rewrite(input, &Mode::AsciiToUnicode, false, |_| true).unwrap());
 }
 ```
 which will output:

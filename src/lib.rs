@@ -29,7 +29,12 @@ pub enum TlaError {
     },
 }
 
-pub fn rewrite(input: &str, mode: &Mode, force: bool) -> Result<String, TlaError> {
+pub fn rewrite(
+    input: &str,
+    mode: &Mode,
+    force: bool,
+    should_translate: impl Fn(&SymbolMapping) -> bool,
+) -> Result<String, TlaError> {
     let mut parser = Parser::new();
     parser
         .set_language(&tree_sitter_tlaplus::LANGUAGE.into())
@@ -50,7 +55,13 @@ pub fn rewrite(input: &str, mode: &Mode, force: bool) -> Result<String, TlaError
 
     // Identify & replace symbols
     mark_jlists(&input_tree, &mut cursor, &mut tla_lines);
-    mark_symbols(&input_tree, &mut cursor, &mut tla_lines, mode);
+    mark_symbols(
+        &input_tree,
+        &mut cursor,
+        &mut tla_lines,
+        mode,
+        should_translate,
+    );
     //println!("{:#?}", tla_lines);
     replace_symbols(&mut tla_lines);
 
@@ -185,14 +196,14 @@ fn check_node_equality(
 #[derive(Debug, Deserialize)]
 pub struct SymbolMapping {
     #[serde(rename = "Name")]
-    name: String,
+    pub name: String,
     #[serde(
         rename = "ASCII",
         deserialize_with = "vec_from_semicolon_separated_str"
     )]
-    ascii: Vec<String>,
+    pub ascii: Vec<String>,
     #[serde(rename = "Unicode")]
-    unicode: String,
+    pub unicode: String,
 }
 
 impl SymbolMapping {
@@ -423,8 +434,17 @@ struct Symbol {
     target: String,
 }
 
-fn mark_symbols(tree: &Tree, cursor: &mut QueryCursor, tla_lines: &mut [TlaLine], mode: &Mode) {
-    let mappings = get_unicode_mappings();
+fn mark_symbols(
+    tree: &Tree,
+    cursor: &mut QueryCursor,
+    tla_lines: &mut [TlaLine],
+    mode: &Mode,
+    should_translate: impl Fn(&SymbolMapping) -> bool,
+) {
+    let mappings: Vec<SymbolMapping> = get_unicode_mappings()
+        .into_iter()
+        .filter(should_translate)
+        .collect();
     let queries = &mappings
         .iter()
         .map(|s| s.source_query(mode))
@@ -603,9 +623,13 @@ mod tests {
     }
 
     fn run_roundtrip_test(expected: &str) {
-        let intermediate = unwrap_conversion(rewrite(expected, &Mode::AsciiToUnicode, false));
+        let intermediate =
+            unwrap_conversion(rewrite(expected, &Mode::AsciiToUnicode, false, |_| true));
         check_ascii_replaced(&intermediate);
-        let actual = unwrap_conversion(rewrite(&intermediate, &Mode::UnicodeToAscii, false));
+        let actual =
+            unwrap_conversion(rewrite(&intermediate, &Mode::UnicodeToAscii, false, |_| {
+                true
+            }));
         assert_eq!(
             expected, actual,
             "\nExpected:\n{}\nActual:\n{}",
@@ -675,9 +699,13 @@ op == x \otimes y
 op == x \circ y
 op == P \times Q
 ===="#;
-        let intermediate = unwrap_conversion(rewrite(expected, &Mode::AsciiToUnicode, false));
+        let intermediate =
+            unwrap_conversion(rewrite(expected, &Mode::AsciiToUnicode, false, |_| true));
         check_ascii_replaced(&intermediate);
-        let actual = unwrap_conversion(rewrite(&intermediate, &Mode::UnicodeToAscii, false));
+        let actual =
+            unwrap_conversion(rewrite(&intermediate, &Mode::UnicodeToAscii, false, |_| {
+                true
+            }));
         // Only first and last lines should be the same
         for (i, (expected_line, actual_line)) in zip(expected.lines(), actual.lines()).enumerate() {
             if i <= 1 || i == expected.lines().count() - 1 {
@@ -790,9 +818,12 @@ op == /\ A
       /\ B
 => C
 ===="#;
-        let intermediate = unwrap_conversion(rewrite(expected, &Mode::AsciiToUnicode, false));
+        let intermediate =
+            unwrap_conversion(rewrite(expected, &Mode::AsciiToUnicode, false, |_| true));
         check_ascii_replaced(&intermediate);
-        unwrap_conversion(rewrite(&intermediate, &Mode::UnicodeToAscii, false));
+        unwrap_conversion(rewrite(&intermediate, &Mode::UnicodeToAscii, false, |_| {
+            true
+        }));
     }
 
     #[test]
@@ -811,9 +842,12 @@ op == A <=> /\ B
             /\ C
  => D
 ===="#;
-        let intermediate = unwrap_conversion(rewrite(expected, &Mode::AsciiToUnicode, false));
+        let intermediate =
+            unwrap_conversion(rewrite(expected, &Mode::AsciiToUnicode, false, |_| true));
         check_ascii_replaced(&intermediate);
-        unwrap_conversion(rewrite(&intermediate, &Mode::UnicodeToAscii, false));
+        unwrap_conversion(rewrite(&intermediate, &Mode::UnicodeToAscii, false, |_| {
+            true
+        }));
     }
 
     #[test]
@@ -880,18 +914,18 @@ op == /\ A
     #[test]
     fn test_empty_input() {
         let input = "";
-        let output = rewrite(&input, &Mode::UnicodeToAscii, true);
+        let output = rewrite(&input, &Mode::UnicodeToAscii, true, |_| true);
         assert_eq!(input, output.unwrap());
-        let output = rewrite(&input, &Mode::AsciiToUnicode, true);
+        let output = rewrite(&input, &Mode::AsciiToUnicode, true, |_| true);
         assert_eq!(input, output.unwrap());
     }
 
     #[test]
     fn test_single_newline() {
         let input = "\n";
-        let output = rewrite(&input, &Mode::UnicodeToAscii, true);
+        let output = rewrite(&input, &Mode::UnicodeToAscii, true, |_| true);
         assert_eq!(input, output.unwrap());
-        let output = rewrite(&input, &Mode::AsciiToUnicode, true);
+        let output = rewrite(&input, &Mode::AsciiToUnicode, true, |_| true);
         assert_eq!(input, output.unwrap());
     }
 
@@ -913,6 +947,135 @@ op == 1
 op == 1
 ====
 "#,
+        );
+    }
+
+    #[test]
+    fn test_translate_to_unicode_with_skip_filter() {
+        let input = r#"
+---- MODULE Test ----
+op ==
+  /\ x <= y
+  /\ Nat
+  /\ \/ Int
+     \/ Real
+===="#;
+        let output = rewrite(&input, &Mode::AsciiToUnicode, true, |s| {
+            ["def_eq"].contains(&s.name.as_str())
+        })
+        .unwrap();
+        assert_eq!(
+            r#"
+---- MODULE Test ----
+op ≜
+  /\ x <= y
+  /\ Nat
+  /\ \/ Int
+     \/ Real
+===="#,
+            output
+        );
+        let output = rewrite(&input, &Mode::AsciiToUnicode, true, |s| {
+            ["leq"].contains(&s.name.as_str())
+        })
+        .unwrap();
+        assert_eq!(
+            r#"
+---- MODULE Test ----
+op ==
+  /\ x ≤ y
+  /\ Nat
+  /\ \/ Int
+     \/ Real
+===="#,
+            output
+        );
+        let output = rewrite(&input, &Mode::AsciiToUnicode, true, |s| {
+            ["nat_number_set", "int_number_set", "real_number_set"].contains(&s.name.as_str())
+        })
+        .unwrap();
+        assert_eq!(
+            r#"
+---- MODULE Test ----
+op ==
+  /\ x <= y
+  /\ ℕ
+  /\ \/ ℤ
+     \/ ℝ
+===="#,
+            output
+        );
+        let output = rewrite(&input, &Mode::AsciiToUnicode, true, |s| {
+            ["def_eq", "leq", "bullet_conj", "bullet_disj"].contains(&s.name.as_str())
+        })
+        .unwrap();
+        assert_eq!(
+            r#"
+---- MODULE Test ----
+op ≜
+  ∧ x ≤ y
+  ∧ Nat
+  ∧ ∨ Int
+    ∨ Real
+===="#,
+            output
+        );
+    }
+
+    #[test]
+    fn test_translate_to_ascii_with_skip_filter() {
+        let input = r#"
+---- MODULE Test ----
+op ≜
+  ∧ x ≤ y
+  ∧ ℕ
+  ∧ ∨ ℤ
+    ∨ ℝ
+===="#;
+        let output = rewrite(&input, &Mode::UnicodeToAscii, true, |s| {
+            ["def_eq"].contains(&s.name.as_str())
+        })
+        .unwrap();
+        assert_eq!(
+            r#"
+---- MODULE Test ----
+op ==
+  ∧ x ≤ y
+  ∧ ℕ
+  ∧ ∨ ℤ
+    ∨ ℝ
+===="#,
+            output
+        );
+        let output = rewrite(&input, &Mode::UnicodeToAscii, true, |s| {
+            ["def_eq", "leq", "bullet_conj"].contains(&s.name.as_str())
+        })
+        .unwrap();
+        assert_eq!(
+            r#"
+---- MODULE Test ----
+op ==
+  /\ x <= y
+  /\ ℕ
+  /\ ∨ ℤ
+     ∨ ℝ
+===="#,
+            output
+        );
+        let output = rewrite(&input, &Mode::UnicodeToAscii, true, |s| {
+            ["nat_number_set", "int_number_set", "real_number_set"].contains(&s.name.as_str())
+        })
+        .unwrap();
+        assert_eq!(
+            r#"
+---- MODULE Test ----
+op ≜
+  ∧ x ≤ y
+  ∧ Nat
+  ∧ ∨ Int
+    ∨ Real
+===="#,
+            output
         );
     }
 }
